@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-mango: #ff9e00;
+  --color-tomato: #ff382e;
+  --color-lime: #70e000;
+  --color-papaya: #ff6b35;
+  --color-jungle-dark: #070f0a;
+  --color-jungle-surface: #0c1a12;
+  --color-cream: #fdfbf7;
+}
+
+body {
+  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-jungle-dark);
+  color: var(--color-cream);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0c1a12;
+}
+::-webkit-scrollbar-thumb {
+  background: #2b533d;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #ff9e00;
+}
+
+.glow-mango {
+  filter: drop-shadow(0 0 10px rgba(255, 158, 0, 0.5));
+}
+.glow-tomato {
+  filter: drop-shadow(0 0 10px rgba(255, 56, 46, 0.5));
+}
+.glow-lime {
+  filter: drop-shadow(0 0 10px rgba(112, 224, 0, 0.5));
+}
+.glow-papaya {
+  filter: drop-shadow(0 0 10px rgba(255, 107, 53, 0.5));
+}
+
+.tropical-grid {
+  background-size: 28px 28px;
+  background-image: 
+    linear-gradient(to right, rgba(43, 83, 61, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(43, 83, 61, 0.18) 1px, transparent 1px);
+}

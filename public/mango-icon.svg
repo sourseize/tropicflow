@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="mangoGrad" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFDD55" />
+      <stop offset="45%" stop-color="#FF9E00" />
+      <stop offset="75%" stop-color="#FF6B35" />
+      <stop offset="100%" stop-color="#E63946" />
+    </radialGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9EF01A" />
+      <stop offset="100%" stop-color="#2B533D" />
+    </linearGradient>
+  </defs>
+  <path d="M 45 10 C 60 5, 80 15, 75 35 C 60 35, 45 25, 45 10 Z" fill="url(#leafGrad)" />
+  <path d="M 46 22 Q 48 14 50 8" stroke="#387500" stroke-width="4" stroke-linecap="round" fill="none" />
+  <path d="M 50 18 C 75 18, 90 40, 85 68 C 80 88, 55 94, 38 92 C 18 90, 12 70, 16 48 C 20 28, 32 18, 50 18 Z" fill="url(#mangoGrad)" filter="drop-shadow(0 4px 12px rgba(255, 107, 53, 0.4))"/>
+  <ellipse cx="38" cy="38" rx="14" ry="7" transform="rotate(-35 38 38)" fill="white" opacity="0.35" />
+</svg>

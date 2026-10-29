@@ -1,0 +1,141 @@
+import { GraphNode, PatchCable } from './GraphTypes';
+
+export const INITIAL_NODES: GraphNode[] = [
+  {
+    id: 'clock-1',
+    title: 'TROPIC CLOCK',
+    type: 'clock',
+    position: { x: 30, y: 50 },
+    inputs: [],
+    outputs: [
+      { id: 'clk-trig-1', name: 'TRIG OUT', type: 'trigger-out', direction: 'out', color: '#70E000' },
+      { id: 'clk-swing-1', name: 'SWING CV', type: 'cv-out', direction: 'out', color: '#FF9E00' },
+    ],
+    themeColor: 'lime',
+    accentHex: '#70E000',
+  },
+  {
+    id: 'marimba-1',
+    title: 'MANGO MARIMBA',
+    type: 'marimba',
+    position: { x: 340, y: 50 },
+    inputs: [
+      { id: 'mrm-trig-in', name: 'TRIG IN', type: 'trigger-in', direction: 'in', color: '#70E000' },
+      { id: 'mrm-cv-in', name: 'PITCH CV', type: 'cv-in', direction: 'in', color: '#FF9E00' },
+    ],
+    outputs: [
+      { id: 'mrm-audio-out', name: 'AUDIO OUT', type: 'audio-out', direction: 'out', color: '#FF9E00' },
+    ],
+    themeColor: 'mango',
+    accentHex: '#FF9E00',
+  },
+  {
+    id: 'percussion-1',
+    title: 'TOMATO DRUMS',
+    type: 'percussion',
+    position: { x: 30, y: 380 },
+    inputs: [
+      { id: 'perc-trig-in', name: 'TRIG IN', type: 'trigger-in', direction: 'in', color: '#70E000' },
+    ],
+    outputs: [
+      { id: 'perc-audio-out', name: 'DRUM MIX', type: 'audio-out', direction: 'out', color: '#FF382E' },
+    ],
+    themeColor: 'tomato',
+    accentHex: '#FF382E',
+  },
+  {
+    id: 'synth-1',
+    title: 'PAPAYA ACID LEAD',
+    type: 'synth',
+    position: { x: 340, y: 380 },
+    inputs: [
+      { id: 'syn-gate-in', name: 'GATE IN', type: 'trigger-in', direction: 'in', color: '#70E000' },
+      { id: 'syn-filter-cv', name: 'CUTOFF CV', type: 'cv-in', direction: 'in', color: '#FF6B35' },
+    ],
+    outputs: [
+      { id: 'syn-audio-out', name: 'AUDIO OUT', type: 'audio-out', direction: 'out', color: '#FF6B35' },
+    ],
+    themeColor: 'papaya',
+    accentHex: '#FF6B35',
+  },
+  {
+    id: 'delay-1',
+    title: 'TROPICAL TAPE DELAY',
+    type: 'delay',
+    position: { x: 670, y: 50 },
+    inputs: [
+      { id: 'del-audio-in', name: 'AUDIO IN', type: 'audio-in', direction: 'in', color: '#FF9E00' },
+      { id: 'del-time-cv', name: 'TIME CV', type: 'cv-in', direction: 'in', color: '#70E000' },
+    ],
+    outputs: [
+      { id: 'del-wet-out', name: 'WET OUT', type: 'audio-out', direction: 'out', color: '#FF9E00' },
+    ],
+    themeColor: 'mango',
+    accentHex: '#FF9E00',
+  },
+  {
+    id: 'master-1',
+    title: 'JUNGLE MASTER BUS',
+    type: 'master',
+    position: { x: 990, y: 180 },
+    inputs: [
+      { id: 'mst-in-l', name: 'SUM L/R', type: 'audio-in', direction: 'in', color: '#FF9E00' },
+    ],
+    outputs: [
+      { id: 'mst-monitor', name: 'MONITOR', type: 'audio-out', direction: 'out', color: '#70E000' },
+    ],
+    themeColor: 'lime',
+    accentHex: '#70E000',
+  },
+];
+
+export const INITIAL_CABLES: PatchCable[] = [
+  {
+    id: 'cable-1',
+    fromNodeId: 'clock-1',
+    fromPortId: 'clk-trig-1',
+    toNodeId: 'marimba-1',
+    toPortId: 'mrm-trig-in',
+    color: '#70E000',
+  },
+  {
+    id: 'cable-2',
+    fromNodeId: 'clock-1',
+    fromPortId: 'clk-trig-1',
+    toNodeId: 'percussion-1',
+    toPortId: 'perc-trig-in',
+    color: '#FF382E',
+  },
+  {
+    id: 'cable-3',
+    fromNodeId: 'marimba-1',
+    fromPortId: 'mrm-audio-out',
+    toNodeId: 'delay-1',
+    toPortId: 'del-audio-in',
+    color: '#FF9E00',
+  },
+  {
+    id: 'cable-4',
+    fromNodeId: 'delay-1',
+    fromPortId: 'del-wet-out',
+    toNodeId: 'master-1',
+    toPortId: 'mst-in-l',
+    color: '#FF9E00',
+  },
+  {
+    id: 'cable-5',
+    fromNodeId: 'synth-1',
+    fromPortId: 'syn-audio-out',
+    toNodeId: 'master-1',
+    toPortId: 'mst-in-l',
+    color: '#FF6B35',
+  },
+  {
+    id: 'cable-6',
+    fromNodeId: 'percussion-1',
+    fromPortId: 'perc-audio-out',
+    toNodeId: 'master-1',
+    toPortId: 'mst-in-l',
+    color: '#FF382E',
+  },
+];
