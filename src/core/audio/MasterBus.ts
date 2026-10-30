@@ -1,15 +1,17 @@
-import { AudioContextManager } from './AudioContextManager';
-
 export class MasterBus {
   public readonly inputNode: GainNode;
   public readonly outputNode: GainNode;
   public readonly analyserNode: AnalyserNode;
   private readonly compressorNode: DynamicsCompressorNode;
-  private readonly ctxManager: AudioContextManager;
+  private readonly ctx: BaseAudioContext;
+  private volume: number = 0.85;
 
-  constructor() {
-    this.ctxManager = AudioContextManager.getInstance();
-    const ctx = this.ctxManager.getContext();
+  /**
+   * @param connectToDestination Pass false to leave the output unconnected
+   *        (offline renders route it through a channel merger instead).
+   */
+  constructor(ctx: BaseAudioContext, connectToDestination: boolean = true) {
+    this.ctx = ctx;
 
     this.inputNode = ctx.createGain();
     this.outputNode = ctx.createGain();
@@ -28,15 +30,18 @@ export class MasterBus {
     this.inputNode.connect(this.compressorNode);
     this.compressorNode.connect(this.analyserNode);
     this.analyserNode.connect(this.outputNode);
-    this.outputNode.connect(ctx.destination);
+    if (connectToDestination) this.outputNode.connect(ctx.destination);
 
-    this.outputNode.gain.setValueAtTime(0.85, ctx.currentTime);
+    this.outputNode.gain.setValueAtTime(this.volume, ctx.currentTime);
   }
 
   public setVolume(volume: number): void {
-    const clamped = Math.max(0, Math.min(1.2, volume));
-    const ctx = this.ctxManager.getContext();
-    this.outputNode.gain.setTargetAtTime(clamped, ctx.currentTime, 0.02);
+    this.volume = Math.max(0, Math.min(1.2, volume));
+    this.outputNode.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.02);
+  }
+
+  public getVolume(): number {
+    return this.volume;
   }
 
   public getWaveformData(array: Uint8Array<ArrayBuffer>): void {

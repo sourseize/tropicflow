@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AudioEngine } from '../../core/audio/AudioEngine';
-import { OscilloscopeRenderer } from '../../core/canvas/OscilloscopeRenderer';
-import { SpectrumRenderer } from '../../core/canvas/SpectrumRenderer';
+import { AudioEngine } from '../../core/audio/AudioEngine.ts';
+import { OscilloscopeRenderer } from '../../core/canvas/OscilloscopeRenderer.ts';
+import { SpectrumRenderer } from '../../core/canvas/SpectrumRenderer.ts';
 import { Activity, BarChart2 } from 'lucide-react';
 
 export const VisualizerPanel: React.FC = () => {

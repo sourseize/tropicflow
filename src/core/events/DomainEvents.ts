@@ -13,7 +13,9 @@ export type DomainEventType =
   | 'CABLE_CONNECTED'
   | 'CABLE_DISCONNECTED'
   | 'RECORDING_STARTED'
-  | 'RECORDING_STOPPED';
+  | 'RECORDING_STOPPED'
+  | 'CHAMBER_COLLISION'
+  | 'CHAMBER_CHANGED';
 
 export interface BaseDomainEvent {
   type: DomainEventType;
@@ -38,6 +40,28 @@ export interface StepTriggeredEvent extends BaseDomainEvent {
   type: 'STEP_TRIGGERED';
   stepIndex: number;
   activeTracks: string[];
+  /** Audio-context time at which the step will actually sound. */
+  audioTime: number;
+  /** Audio-context time when the step was scheduled (always <= audioTime). */
+  contextTime: number;
+}
+
+export interface ChamberCollisionEvent extends BaseDomainEvent {
+  type: 'CHAMBER_COLLISION';
+  /** When the resulting note sounds. */
+  audioTime: number;
+  contextTime: number;
+  ballId: number;
+  surfaceId: string;
+  surfaceKind: string;
+  track: string;
+  impactSpeed: number;
+}
+
+export interface RecordingEvent extends BaseDomainEvent {
+  type: 'RECORDING_STARTED' | 'RECORDING_STOPPED';
+  bars: number;
+  sampleRate: number;
 }
 
 export interface ParamChangedEvent extends BaseDomainEvent {
@@ -67,6 +91,8 @@ export type DomainEvent =
   | NoteOnEvent
   | NoteOffEvent
   | StepTriggeredEvent
+  | RecordingEvent
+  | ChamberCollisionEvent
   | ParamChangedEvent
   | CableConnectedEvent
   | CableDisconnectedEvent;

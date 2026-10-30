@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AudioEngine } from '../../core/audio/AudioEngine';
+import { AudioEngine } from '../../core/audio/AudioEngine.ts';
 
 interface KeyDef {
   note: string;

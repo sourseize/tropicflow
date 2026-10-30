@@ -1,0 +1,874 @@
+{
+  "config": {
+    "bpm": 118,
+    "swing": 0,
+    "bars": 1,
+    "sampleRate": 48000,
+    "tailSeconds": 1.5,
+    "pattern": {
+      "kick": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "snare": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "hihat": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "marimba": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "synth": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    "cables": [
+      {
+        "id": "cable-1",
+        "fromNodeId": "clock-1",
+        "fromPortId": "clk-trig-1",
+        "toNodeId": "marimba-1",
+        "toPortId": "mrm-trig-in",
+        "color": "#70E000"
+      },
+      {
+        "id": "cable-2",
+        "fromNodeId": "clock-1",
+        "fromPortId": "clk-trig-1",
+        "toNodeId": "percussion-1",
+        "toPortId": "perc-trig-in",
+        "color": "#FF382E"
+      },
+      {
+        "id": "cable-3",
+        "fromNodeId": "marimba-1",
+        "fromPortId": "mrm-audio-out",
+        "toNodeId": "delay-1",
+        "toPortId": "del-audio-in",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-4",
+        "fromNodeId": "delay-1",
+        "fromPortId": "del-wet-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-5",
+        "fromNodeId": "synth-1",
+        "fromPortId": "syn-audio-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-6",
+        "fromNodeId": "percussion-1",
+        "fromPortId": "perc-audio-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF382E"
+      },
+      {
+        "id": "cable-7",
+        "fromNodeId": "marimba-1",
+        "fromPortId": "mrm-audio-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-8",
+        "fromNodeId": "synth-1",
+        "fromPortId": "syn-audio-out",
+        "toNodeId": "delay-1",
+        "toPortId": "del-audio-in",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-9",
+        "fromNodeId": "clock-1",
+        "fromPortId": "clk-trig-1",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-gate-in",
+        "color": "#70E000"
+      },
+      {
+        "id": "cable-10",
+        "fromNodeId": "chamber-1",
+        "fromPortId": "chm-trig-out",
+        "toNodeId": "percussion-1",
+        "toPortId": "perc-trig-in",
+        "color": "#70E000"
+      },
+      {
+        "id": "cable-11",
+        "fromNodeId": "chamber-1",
+        "fromPortId": "chm-trig-out",
+        "toNodeId": "marimba-1",
+        "toPortId": "mrm-trig-in",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-12",
+        "fromNodeId": "chamber-1",
+        "fromPortId": "chm-trig-out",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-gate-in",
+        "color": "#FF6B35"
+      }
+    ],
+    "delay": {
+      "mix": 0
+    },
+    "chamber": {
+      "enabled": true,
+      "quantize": 0,
+      "autoDropBars": 0,
+      "physics": {
+        "seed": 7,
+        "balls": [
+          {
+            "x": 0.31,
+            "y": 0.05
+          },
+          {
+            "x": 0.6,
+            "y": 0.05,
+            "vx": 0.3
+          },
+          {
+            "x": 0.47,
+            "y": 0.2,
+            "vx": -0.5
+          }
+        ]
+      }
+    }
+  },
+  "busLatency": 0.006,
+  "patternEnd": 2.0338983050847466,
+  "score": [
+    {
+      "time": 0.3409748973716242,
+      "audibleTime": 0.3469748973716242,
+      "source": "chamber",
+      "track": "marimba",
+      "frequency": 261.63,
+      "velocity": 0.38642778457578136,
+      "collision": {
+        "time": 0.3409748973716242,
+        "ballId": 3,
+        "surfaceKind": "peg",
+        "surfaceId": "peg-1",
+        "impactSpeed": 0.8501411260667191,
+        "position": {
+          "x": 0.3000484788729724,
+          "y": 0.38000002937752486
+        },
+        "normal": {
+          "x": 0.0012119718243108766,
+          "y": -0.9999992655618788
+        },
+        "note": 0
+      }
+    },
+    {
+      "time": 0.40511955693177054,
+      "audibleTime": 0.41111955693177055,
+      "source": "chamber",
+      "track": "snare",
+      "velocity": 0.40077252696561994,
+      "collision": {
+        "time": 0.40511955693177054,
+        "ballId": 1,
+        "surfaceKind": "ball",
+        "surfaceId": "3",
+        "impactSpeed": 0.881699559324364,
+        "position": {
+          "x": 0.2892146717796454,
+          "y": 0.2827590917549799
+        },
+        "normal": {
+          "x": 0.5938665205815624,
+          "y": -0.8045635809134967
+        }
+      }
+    },
+    {
+      "time": 0.652755664968859,
+      "audibleTime": 0.658755664968859,
+      "source": "chamber",
+      "track": "hihat",
+      "velocity": 0.4272037750251463,
+      "collision": {
+        "time": 0.652755664968859,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "left",
+        "side": "left",
+        "impactSpeed": 0.9398483050553219,
+        "position": {
+          "x": 0,
+          "y": 0.4265990828761116
+        },
+        "normal": {
+          "x": 1,
+          "y": 0
+        }
+      }
+    },
+    {
+      "time": 0.6761620068779925,
+      "audibleTime": 0.6821620068779926,
+      "source": "chamber",
+      "track": "marimba",
+      "frequency": 261.63,
+      "velocity": 0.3034386470580979,
+      "collision": {
+        "time": 0.6761620068779925,
+        "ballId": 1,
+        "surfaceKind": "peg",
+        "surfaceId": "peg-1",
+        "impactSpeed": 0.6675650235278154,
+        "position": {
+          "x": 0.30533333333333396,
+          "y": 0.38035715000715076
+        },
+        "normal": {
+          "x": 0.1333333333333492,
+          "y": -0.9910712498212315
+        },
+        "note": 0
+      }
+    },
+    {
+      "time": 0.8580169569091468,
+      "audibleTime": 0.8640169569091468,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.9666920038860144,
+      "collision": {
+        "time": 0.8580169569091468,
+        "ballId": 2,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 2.126722408549232,
+        "position": {
+          "x": 0.8552115717184586,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 1.0696063997843555,
+      "audibleTime": 1.0756063997843555,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.8211685722652908,
+      "collision": {
+        "time": 1.0696063997843555,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 1.80657085898364,
+        "position": {
+          "x": 0.31590495067467433,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 1.2317019107063703,
+      "audibleTime": 1.2377019107063703,
+      "source": "chamber",
+      "track": "hihat",
+      "velocity": 0.25,
+      "collision": {
+        "time": 1.2317019107063703,
+        "ballId": 2,
+        "surfaceKind": "wall",
+        "surfaceId": "right",
+        "side": "right",
+        "impactSpeed": 0.29270418006635907,
+        "position": {
+          "x": 1,
+          "y": 0.5690426865670336
+        },
+        "normal": {
+          "x": -1,
+          "y": 0
+        }
+      }
+    },
+    {
+      "time": 1.275876432449256,
+      "audibleTime": 1.281876432449256,
+      "source": "chamber",
+      "track": "marimba",
+      "frequency": 440.00745824565865,
+      "velocity": 0.4380971798527065,
+      "collision": {
+        "time": 1.275876432449256,
+        "ballId": 3,
+        "surfaceKind": "peg",
+        "surfaceId": "peg-3",
+        "impactSpeed": 0.9638137956759544,
+        "position": {
+          "x": 0.46615533497136696,
+          "y": 0.7175276598024037
+        },
+        "normal": {
+          "x": -0.34611662571582563,
+          "y": 0.9381914950600921
+        },
+        "note": 4
+      }
+    },
+    {
+      "time": 1.3812197023962036,
+      "audibleTime": 1.3872197023962036,
+      "source": "chamber",
+      "track": "marimba",
+      "frequency": 440.00745824565865,
+      "velocity": 0.37842902465209394,
+      "collision": {
+        "time": 1.3812197023962036,
+        "ballId": 1,
+        "surfaceKind": "peg",
+        "surfaceId": "peg-3",
+        "impactSpeed": 0.8325438542346068,
+        "position": {
+          "x": 0.44649811312130283,
+          "y": 0.6581453992128207
+        },
+        "normal": {
+          "x": -0.8375471719674293,
+          "y": -0.5463650196794826
+        },
+        "note": 4
+      }
+    },
+    {
+      "time": 1.483769788973494,
+      "audibleTime": 1.489769788973494,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.58635086636473,
+      "collision": {
+        "time": 1.483769788973494,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 1.2899719060024062,
+        "position": {
+          "x": 0.4736531488885309,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 1.727820965941875,
+      "audibleTime": 1.733820965941875,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.6227277154636645,
+      "collision": {
+        "time": 1.727820965941875,
+        "ballId": 1,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 1.3700009740200618,
+        "position": {
+          "x": 0.05506336487371756,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 1.7470949072971398,
+      "audibleTime": 1.7530949072971398,
+      "source": "chamber",
+      "track": "hihat",
+      "velocity": 0.47307102385756655,
+      "collision": {
+        "time": 1.7470949072971398,
+        "ballId": 1,
+        "surfaceKind": "wall",
+        "surfaceId": "left",
+        "side": "left",
+        "impactSpeed": 1.0407562524866465,
+        "position": {
+          "x": 0,
+          "y": 0.9464562582825164
+        },
+        "normal": {
+          "x": 1,
+          "y": 0
+        }
+      }
+    },
+    {
+      "time": 2.078058938140105,
+      "audibleTime": 2.084058938140105,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.6903806570257189,
+      "collision": {
+        "time": 2.078058938140105,
+        "ballId": 2,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 1.5188374454565818,
+        "position": {
+          "x": 0.7881346901335982,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 2.224963139167356,
+      "audibleTime": 2.230963139167356,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.4200905221572986,
+      "collision": {
+        "time": 2.224963139167356,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.924199148746057,
+        "position": {
+          "x": 0.5429147166285904,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 2.3734204730321373,
+      "audibleTime": 2.379420473032137,
+      "source": "chamber",
+      "track": "snare",
+      "velocity": 0.4906008662438031,
+      "collision": {
+        "time": 2.3734204730321373,
+        "ballId": 1,
+        "surfaceKind": "ball",
+        "surfaceId": "3",
+        "impactSpeed": 1.079321905736367,
+        "position": {
+          "x": 0.5290008012606899,
+          "y": 0.8725720975920316
+        },
+        "normal": {
+          "x": -0.7883987767318347,
+          "y": -0.6151645055168143
+        }
+      }
+    },
+    {
+      "time": 2.5248471922516105,
+      "audibleTime": 2.5308471922516103,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.2978599142260996,
+      "collision": {
+        "time": 2.5248471922516105,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.6552918112974192,
+        "position": {
+          "x": 0.6818454956638195,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 2.6759094765684797,
+      "audibleTime": 2.6819094765684794,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.3424246490908489,
+      "collision": {
+        "time": 2.6759094765684797,
+        "ballId": 1,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.7533342279998676,
+        "position": {
+          "x": 0.5014068440750757,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 2.870598677937123,
+      "audibleTime": 2.876598677937123,
+      "source": "chamber",
+      "track": "hihat",
+      "velocity": 0.37096946400017744,
+      "collision": {
+        "time": 2.870598677937123,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "right",
+        "side": "right",
+        "impactSpeed": 0.8161328208003904,
+        "position": {
+          "x": 1,
+          "y": 0.9515189545331172
+        },
+        "normal": {
+          "x": -1,
+          "y": 0
+        }
+      }
+    },
+    {
+      "time": 2.9018238789872832,
+      "audibleTime": 2.907823878987283,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.25,
+      "collision": {
+        "time": 2.9018238789872832,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.4706319021246807,
+        "position": {
+          "x": 0.9466574761056917,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 2.950380320912044,
+      "audibleTime": 2.956380320912044,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.49419492502822016,
+      "collision": {
+        "time": 2.950380320912044,
+        "ballId": 2,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 1.0872288350620845,
+        "position": {
+          "x": 0.6089496414818989,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 3.1092005201098254,
+      "audibleTime": 3.115200520109825,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.25,
+      "collision": {
+        "time": 3.1092005201098254,
+        "ballId": 1,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.5408356681458474,
+        "position": {
+          "x": 0.5014068440750757,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 3.1726615155688864,
+      "audibleTime": 3.178661515568886,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.25,
+      "collision": {
+        "time": 3.1726615155688864,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.3382448387635497,
+        "position": {
+          "x": 0.7880398045396731,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 3.3673621965247835,
+      "audibleTime": 3.3733621965247833,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.25,
+      "collision": {
+        "time": 3.3673621965247835,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.2432189183817416,
+        "position": {
+          "x": 0.6745418721780326,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 3.420396685751058,
+      "audibleTime": 3.4263966857510577,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.25,
+      "collision": {
+        "time": 3.420396685751058,
+        "ballId": 1,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.3885935879757444,
+        "position": {
+          "x": 0.5014068440750757,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 3.4517715351627647,
+      "audibleTime": 3.4577715351627645,
+      "source": "chamber",
+      "track": "snare",
+      "velocity": 0.3125273724950411,
+      "collision": {
+        "time": 3.4517715351627647,
+        "ballId": 2,
+        "surfaceKind": "ball",
+        "surfaceId": "1",
+        "impactSpeed": 0.6875602194890904,
+        "position": {
+          "x": 0.5043854221747737,
+          "y": 0.9225357988683047
+        },
+        "normal": {
+          "x": 0.0851022314199425,
+          "y": -0.9963722247269573
+        }
+      }
+    },
+    {
+      "time": 3.470446655891314,
+      "audibleTime": 3.476446655891314,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.25,
+      "collision": {
+        "time": 3.470446655891314,
+        "ballId": 1,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.4345038652855771,
+        "position": {
+          "x": 0.5004787502687591,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    },
+    {
+      "time": 3.507014513500429,
+      "audibleTime": 3.513014513500429,
+      "source": "chamber",
+      "track": "snare",
+      "velocity": 0.25,
+      "collision": {
+        "time": 3.507014513500429,
+        "ballId": 2,
+        "surfaceKind": "ball",
+        "surfaceId": "1",
+        "impactSpeed": 0.2405837451422005,
+        "position": {
+          "x": 0.4988011399186136,
+          "y": 0.9200191965191431
+        },
+        "normal": {
+          "x": 0.006020787132049456,
+          "y": -0.9999818748968955
+        }
+      }
+    },
+    {
+      "time": 3.507390352737359,
+      "audibleTime": 3.5133903527373587,
+      "source": "chamber",
+      "track": "kick",
+      "velocity": 0.25,
+      "collision": {
+        "time": 3.507390352737359,
+        "ballId": 3,
+        "surfaceKind": "wall",
+        "surfaceId": "floor",
+        "side": "floor",
+        "impactSpeed": 0.17495315999229313,
+        "position": {
+          "x": 0.5931872896230116,
+          "y": 1
+        },
+        "normal": {
+          "x": 0,
+          "y": -1
+        }
+      }
+    }
+  ]
+}

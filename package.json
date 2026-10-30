@@ -1,26 +1,37 @@
 {
   "name": "tropicflow",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "check": "node scripts/doctor.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "start": "node scripts/serve.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test \"tests/unit/**/*.test.ts\"",
+    "test:e2e": "node --test \"tests/e2e/**/*.test.ts\"",
+    "test:e2e:ui": "npm run build && node --test tests/e2e/ui.test.ts",
+    "render:wav": "node scripts/render-wav.ts",
+    "compare:wav": "node scripts/compare-wav.ts",
+    "golden:update": "node scripts/render-wav.ts --preset default-groove --bars 1 --bit-depth 16 --out tests/golden/default-groove-1bar.wav && node scripts/render-wav.ts --preset chamber-only --bars 1 --bit-depth 16 --out tests/golden/chamber-only-1bar.wav"
   },
   "dependencies": {
-    "lucide-react": "^1.16.0",
+    "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
-  },
-  "devDependencies": {
+    "react-dom": "^19.0.0",
+    "@types/node": "^22.10.0",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "playwright": "^1.50.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",

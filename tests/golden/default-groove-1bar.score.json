@@ -1,0 +1,413 @@
+{
+  "config": {
+    "bpm": 118,
+    "swing": 0,
+    "bars": 1,
+    "sampleRate": 48000,
+    "tailSeconds": 1,
+    "pattern": {
+      "kick": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false
+      ],
+      "snare": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false
+      ],
+      "hihat": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "marimba": [
+        true,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        false,
+        true,
+        false
+      ],
+      "synth": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    "cables": [
+      {
+        "id": "cable-1",
+        "fromNodeId": "clock-1",
+        "fromPortId": "clk-trig-1",
+        "toNodeId": "marimba-1",
+        "toPortId": "mrm-trig-in",
+        "color": "#70E000"
+      },
+      {
+        "id": "cable-2",
+        "fromNodeId": "clock-1",
+        "fromPortId": "clk-trig-1",
+        "toNodeId": "percussion-1",
+        "toPortId": "perc-trig-in",
+        "color": "#FF382E"
+      },
+      {
+        "id": "cable-3",
+        "fromNodeId": "marimba-1",
+        "fromPortId": "mrm-audio-out",
+        "toNodeId": "delay-1",
+        "toPortId": "del-audio-in",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-4",
+        "fromNodeId": "delay-1",
+        "fromPortId": "del-wet-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-5",
+        "fromNodeId": "synth-1",
+        "fromPortId": "syn-audio-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-6",
+        "fromNodeId": "percussion-1",
+        "fromPortId": "perc-audio-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF382E"
+      },
+      {
+        "id": "cable-7",
+        "fromNodeId": "marimba-1",
+        "fromPortId": "mrm-audio-out",
+        "toNodeId": "master-1",
+        "toPortId": "mst-in-l",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-8",
+        "fromNodeId": "synth-1",
+        "fromPortId": "syn-audio-out",
+        "toNodeId": "delay-1",
+        "toPortId": "del-audio-in",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-9",
+        "fromNodeId": "clock-1",
+        "fromPortId": "clk-trig-1",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-gate-in",
+        "color": "#70E000"
+      }
+    ]
+  },
+  "busLatency": 0.006,
+  "patternEnd": 2.0338983050847466,
+  "score": [
+    {
+      "time": 0,
+      "audibleTime": 0.006,
+      "step": 0,
+      "track": "kick",
+      "velocity": 0.95
+    },
+    {
+      "time": 0,
+      "audibleTime": 0.006,
+      "step": 0,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0,
+      "audibleTime": 0.006,
+      "step": 0,
+      "track": "marimba",
+      "frequency": 261.63,
+      "velocity": 0.75
+    },
+    {
+      "time": 0.1271186440677966,
+      "audibleTime": 0.1331186440677966,
+      "step": 1,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0.2542372881355932,
+      "audibleTime": 0.2602372881355932,
+      "step": 2,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0.2542372881355932,
+      "audibleTime": 0.2602372881355932,
+      "step": 2,
+      "track": "synth",
+      "frequency": 196,
+      "velocity": 0.7
+    },
+    {
+      "time": 0.3813559322033898,
+      "audibleTime": 0.3873559322033898,
+      "step": 3,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0.3813559322033898,
+      "audibleTime": 0.3873559322033898,
+      "step": 3,
+      "track": "marimba",
+      "frequency": 587.33,
+      "velocity": 0.75
+    },
+    {
+      "time": 0.5084745762711864,
+      "audibleTime": 0.5144745762711864,
+      "step": 4,
+      "track": "kick",
+      "velocity": 0.95
+    },
+    {
+      "time": 0.5084745762711864,
+      "audibleTime": 0.5144745762711864,
+      "step": 4,
+      "track": "snare",
+      "velocity": 0.8
+    },
+    {
+      "time": 0.5084745762711864,
+      "audibleTime": 0.5144745762711864,
+      "step": 4,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0.635593220338983,
+      "audibleTime": 0.641593220338983,
+      "step": 5,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0.7627118644067796,
+      "audibleTime": 0.7687118644067796,
+      "step": 6,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0.7627118644067796,
+      "audibleTime": 0.7687118644067796,
+      "step": 6,
+      "track": "marimba",
+      "frequency": 440,
+      "velocity": 0.75
+    },
+    {
+      "time": 0.8898305084745762,
+      "audibleTime": 0.8958305084745762,
+      "step": 7,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 0.8898305084745762,
+      "audibleTime": 0.8958305084745762,
+      "step": 7,
+      "track": "synth",
+      "frequency": 196,
+      "velocity": 0.7
+    },
+    {
+      "time": 1.0169491525423728,
+      "audibleTime": 1.0229491525423728,
+      "step": 8,
+      "track": "kick",
+      "velocity": 0.95
+    },
+    {
+      "time": 1.0169491525423728,
+      "audibleTime": 1.0229491525423728,
+      "step": 8,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.1440677966101696,
+      "audibleTime": 1.1500677966101696,
+      "step": 9,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.1440677966101696,
+      "audibleTime": 1.1500677966101696,
+      "step": 9,
+      "track": "marimba",
+      "frequency": 329.63,
+      "velocity": 0.75
+    },
+    {
+      "time": 1.2711864406779663,
+      "audibleTime": 1.2771864406779663,
+      "step": 10,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.2711864406779663,
+      "audibleTime": 1.2771864406779663,
+      "step": 10,
+      "track": "synth",
+      "frequency": 130.81,
+      "velocity": 0.7
+    },
+    {
+      "time": 1.398305084745763,
+      "audibleTime": 1.404305084745763,
+      "step": 11,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.5254237288135597,
+      "audibleTime": 1.5314237288135597,
+      "step": 12,
+      "track": "kick",
+      "velocity": 0.95
+    },
+    {
+      "time": 1.5254237288135597,
+      "audibleTime": 1.5314237288135597,
+      "step": 12,
+      "track": "snare",
+      "velocity": 0.8
+    },
+    {
+      "time": 1.5254237288135597,
+      "audibleTime": 1.5314237288135597,
+      "step": 12,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.5254237288135597,
+      "audibleTime": 1.5314237288135597,
+      "step": 12,
+      "track": "marimba",
+      "frequency": 261.63,
+      "velocity": 0.75
+    },
+    {
+      "time": 1.6525423728813564,
+      "audibleTime": 1.6585423728813564,
+      "step": 13,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.7796610169491531,
+      "audibleTime": 1.7856610169491531,
+      "step": 14,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.7796610169491531,
+      "audibleTime": 1.7856610169491531,
+      "step": 14,
+      "track": "marimba",
+      "frequency": 440,
+      "velocity": 0.75
+    },
+    {
+      "time": 1.9067796610169498,
+      "audibleTime": 1.9127796610169499,
+      "step": 15,
+      "track": "hihat",
+      "velocity": 0.65
+    },
+    {
+      "time": 1.9067796610169498,
+      "audibleTime": 1.9127796610169499,
+      "step": 15,
+      "track": "synth",
+      "frequency": 130.81,
+      "velocity": 0.7
+    }
+  ]
+}

@@ -48,6 +48,13 @@ body {
   filter: drop-shadow(0 0 10px rgba(255, 107, 53, 0.5));
 }
 
+/* The cable overlay must never intercept pointer events aimed at jacks/modules. */
+.patch-cable-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .tropical-grid {
   background-size: 28px 28px;
   background-image: 

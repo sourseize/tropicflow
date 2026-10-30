@@ -1,12 +1,62 @@
 import React, { useState } from 'react';
-import { AudioEngine } from '../../core/audio/AudioEngine';
-import { Play, Square, Sliders, Volume2, Cpu } from 'lucide-react';
+import { AudioEngine } from '../../core/audio/AudioEngine.ts';
+import { EventBus } from '../../core/events/EventBus.ts';
+import { renderOffline } from '../../core/render/OfflineRenderer.ts';
+import { encodeWav } from '../../core/render/WavCodec.ts';
+import { captureRenderConfig } from '../../core/render/captureConfig.ts';
+import { Play, Square, Sliders, Volume2, Cpu, Download } from 'lucide-react';
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export const TopBar: React.FC = () => {
   const engine = AudioEngine.getInstance();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [bpm, setBpm] = useState<number>(engine.clock.getBpm());
   const [volume, setVolume] = useState<number>(85);
+  const [bounceBars, setBounceBars] = useState<number>(2);
+  const [isBouncing, setIsBouncing] = useState<boolean>(false);
+  const [lastScore, setLastScore] = useState<{ filename: string; json: string } | null>(null);
+
+  /**
+   * Render the current patch offline (faster than realtime, deterministic)
+   * and download it as a 32-bit float WAV plus the note score as JSON.
+   */
+  const bounce = async () => {
+    if (isBouncing) return;
+    setIsBouncing(true);
+    const eventBus = EventBus.getInstance();
+    const config = captureRenderConfig(engine, bounceBars);
+    eventBus.publish({ type: 'RECORDING_STARTED', timestamp: performance.now(), bars: config.bars, sampleRate: config.sampleRate });
+    try {
+      const result = await renderOffline(config);
+      const wav = encodeWav(result.channels, result.sampleRate, 32);
+      const stem = `tropicflow-${config.bpm}bpm-${config.bars}bars`;
+      // Browsers block multiple automatic downloads; the score is offered via its own button.
+      setLastScore({
+        filename: `${stem}.score.json`,
+        json: JSON.stringify(
+          { config, busLatency: result.busLatency, patternEnd: result.patternEnd, score: result.score },
+          null,
+          2
+        ),
+      });
+      downloadBlob(new Blob([wav], { type: 'audio/wav' }), `${stem}.wav`);
+    } catch (err) {
+      console.error('[TopBar] bounce failed', err);
+    } finally {
+      eventBus.publish({ type: 'RECORDING_STOPPED', timestamp: performance.now(), bars: config.bars, sampleRate: config.sampleRate });
+      setIsBouncing(false);
+    }
+  };
 
   const togglePlayback = async () => {
     if (isPlaying) {
@@ -95,6 +145,39 @@ export const TopBar: React.FC = () => {
               className="w-24 h-1.5 bg-jungle-800 rounded-lg appearance-none cursor-pointer accent-mango-500"
             />
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 bg-jungle-950 px-3 py-1.5 rounded-xl border border-jungle-800">
+          <button
+            onClick={bounce}
+            disabled={isBouncing}
+            title="Render the current patch offline and download WAV + score"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-jungle-850 hover:bg-jungle-800 border border-jungle-700 text-cream-200 text-[10px] font-mono font-bold tracking-wider disabled:opacity-50"
+          >
+            <Download size={12} className="text-mango-400" />
+            {isBouncing ? 'RENDERING…' : 'BOUNCE WAV'}
+          </button>
+          {lastScore && (
+            <button
+              onClick={() => downloadBlob(new Blob([lastScore.json], { type: 'application/json' }), lastScore.filename)}
+              title="Download the note score (JSON) of the last bounce for automated verification"
+              className="px-2 py-1 rounded-lg bg-jungle-850 hover:bg-jungle-800 border border-jungle-700 text-cream-200/80 text-[10px] font-mono"
+            >
+              SCORE
+            </button>
+          )}
+          <select
+            value={bounceBars}
+            onChange={(e) => setBounceBars(Number(e.target.value))}
+            className="bg-jungle-900 border border-jungle-800 rounded text-[10px] font-mono text-cream-200 px-1 py-1"
+            aria-label="Bounce length in bars"
+          >
+            {[1, 2, 4, 8].map((b) => (
+              <option key={b} value={b}>
+                {b} BAR{b > 1 ? 'S' : ''}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex items-center gap-2.5 bg-jungle-950 px-3.5 py-1.5 rounded-xl border border-jungle-800">

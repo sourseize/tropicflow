@@ -1,9 +1,9 @@
 import React from 'react';
-import { TopBar } from './components/header/TopBar';
-import { ModularCanvas } from './components/graph/ModularCanvas';
-import { StepSequencer } from './components/sequencer/StepSequencer';
-import { VirtualKeyboard } from './components/keyboard/VirtualKeyboard';
-import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
+import { TopBar } from './components/header/TopBar.tsx';
+import { ModularCanvas } from './components/graph/ModularCanvas.tsx';
+import { StepSequencer } from './components/sequencer/StepSequencer.tsx';
+import { VirtualKeyboard } from './components/keyboard/VirtualKeyboard.tsx';
+import { VisualizerPanel } from './components/visualizer/VisualizerPanel.tsx';
 
 export const App: React.FC = () => {
   return (

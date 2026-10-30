@@ -1,4 +1,4 @@
-import { GraphNode, PatchCable } from './GraphTypes';
+import type { GraphNode, PatchCable } from './GraphTypes.ts';
 
 export const INITIAL_NODES: GraphNode[] = [
   {
@@ -33,7 +33,7 @@ export const INITIAL_NODES: GraphNode[] = [
     id: 'percussion-1',
     title: 'TOMATO DRUMS',
     type: 'percussion',
-    position: { x: 30, y: 380 },
+    position: { x: 30, y: 350 },
     inputs: [
       { id: 'perc-trig-in', name: 'TRIG IN', type: 'trigger-in', direction: 'in', color: '#70E000' },
     ],
@@ -47,7 +47,7 @@ export const INITIAL_NODES: GraphNode[] = [
     id: 'synth-1',
     title: 'PAPAYA ACID LEAD',
     type: 'synth',
-    position: { x: 340, y: 380 },
+    position: { x: 340, y: 350 },
     inputs: [
       { id: 'syn-gate-in', name: 'GATE IN', type: 'trigger-in', direction: 'in', color: '#70E000' },
       { id: 'syn-filter-cv', name: 'CUTOFF CV', type: 'cv-in', direction: 'in', color: '#FF6B35' },
@@ -62,7 +62,7 @@ export const INITIAL_NODES: GraphNode[] = [
     id: 'delay-1',
     title: 'TROPICAL TAPE DELAY',
     type: 'delay',
-    position: { x: 670, y: 50 },
+    position: { x: 650, y: 50 },
     inputs: [
       { id: 'del-audio-in', name: 'AUDIO IN', type: 'audio-in', direction: 'in', color: '#FF9E00' },
       { id: 'del-time-cv', name: 'TIME CV', type: 'cv-in', direction: 'in', color: '#70E000' },
@@ -74,10 +74,22 @@ export const INITIAL_NODES: GraphNode[] = [
     accentHex: '#FF9E00',
   },
   {
+    id: 'chamber-1',
+    title: 'GRAVITY CHAMBER',
+    type: 'chamber',
+    position: { x: 960, y: 50 },
+    inputs: [],
+    outputs: [
+      { id: 'chm-trig-out', name: 'HIT TRIG', type: 'trigger-out', direction: 'out', color: '#70E000' },
+    ],
+    themeColor: 'lime',
+    accentHex: '#70E000',
+  },
+  {
     id: 'master-1',
     title: 'JUNGLE MASTER BUS',
     type: 'master',
-    position: { x: 990, y: 180 },
+    position: { x: 650, y: 350 },
     inputs: [
       { id: 'mst-in-l', name: 'SUM L/R', type: 'audio-in', direction: 'in', color: '#FF9E00' },
     ],
@@ -137,5 +149,53 @@ export const INITIAL_CABLES: PatchCable[] = [
     toNodeId: 'master-1',
     toPortId: 'mst-in-l',
     color: '#FF382E',
+  },
+  {
+    id: 'cable-7',
+    fromNodeId: 'marimba-1',
+    fromPortId: 'mrm-audio-out',
+    toNodeId: 'master-1',
+    toPortId: 'mst-in-l',
+    color: '#FF9E00',
+  },
+  {
+    id: 'cable-8',
+    fromNodeId: 'synth-1',
+    fromPortId: 'syn-audio-out',
+    toNodeId: 'delay-1',
+    toPortId: 'del-audio-in',
+    color: '#FF6B35',
+  },
+  {
+    id: 'cable-9',
+    fromNodeId: 'clock-1',
+    fromPortId: 'clk-trig-1',
+    toNodeId: 'synth-1',
+    toPortId: 'syn-gate-in',
+    color: '#70E000',
+  },
+  {
+    id: 'cable-10',
+    fromNodeId: 'chamber-1',
+    fromPortId: 'chm-trig-out',
+    toNodeId: 'percussion-1',
+    toPortId: 'perc-trig-in',
+    color: '#70E000',
+  },
+  {
+    id: 'cable-11',
+    fromNodeId: 'chamber-1',
+    fromPortId: 'chm-trig-out',
+    toNodeId: 'marimba-1',
+    toPortId: 'mrm-trig-in',
+    color: '#FF9E00',
+  },
+  {
+    id: 'cable-12',
+    fromNodeId: 'chamber-1',
+    fromPortId: 'chm-trig-out',
+    toNodeId: 'synth-1',
+    toPortId: 'syn-gate-in',
+    color: '#FF6B35',
   },
 ];

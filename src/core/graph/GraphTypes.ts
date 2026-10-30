@@ -5,6 +5,7 @@ export type ModuleType =
   | 'percussion'
   | 'delay'
   | 'scope'
+  | 'chamber'
   | 'master';
 
 export type PortType = 'audio-out' | 'audio-in' | 'trigger-out' | 'trigger-in' | 'cv-out' | 'cv-in';

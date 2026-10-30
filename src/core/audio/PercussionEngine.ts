@@ -1,4 +1,5 @@
-import { AudioContextManager } from './AudioContextManager';
+import { disconnectOnEnded } from './AudioContextManager.ts';
+import { SeededRandom } from '../util/SeededRandom.ts';
 
 export interface PercussionParams {
   kickTune: number;
@@ -18,29 +19,31 @@ export const DEFAULT_PERCUSSION_PARAMS: PercussionParams = {
   volume: 0.8,
 };
 
+/** Default seed for the shared noise buffer; fixed so renders are reproducible. */
+export const DEFAULT_NOISE_SEED = 0x5eed1234;
+
 export class PercussionEngine {
   public readonly outputNode: GainNode;
-  private readonly ctxManager: AudioContextManager;
+  private readonly ctx: BaseAudioContext;
   private params: PercussionParams = { ...DEFAULT_PERCUSSION_PARAMS };
   private noiseBuffer: AudioBuffer | null = null;
 
-  constructor() {
-    this.ctxManager = AudioContextManager.getInstance();
-    const ctx = this.ctxManager.getContext();
-
+  constructor(ctx: BaseAudioContext, noiseSeed: number = DEFAULT_NOISE_SEED) {
+    this.ctx = ctx;
     this.outputNode = ctx.createGain();
     this.outputNode.gain.setValueAtTime(this.params.volume, ctx.currentTime);
-    this.createNoiseBuffer();
+    this.createNoiseBuffer(noiseSeed);
   }
 
-  private createNoiseBuffer(): void {
-    const ctx = this.ctxManager.getContext();
-    const bufferSize = ctx.sampleRate * 2;
+  private createNoiseBuffer(seed: number): void {
+    const ctx = this.ctx;
+    const bufferSize = Math.floor(ctx.sampleRate * 2);
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
+    const rng = new SeededRandom(seed);
 
     for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
+      data[i] = rng.bipolar();
     }
     this.noiseBuffer = buffer;
   }
@@ -48,8 +51,7 @@ export class PercussionEngine {
   public updateParam<K extends keyof PercussionParams>(key: K, value: PercussionParams[K]): void {
     this.params[key] = value;
     if (key === 'volume') {
-      const ctx = this.ctxManager.getContext();
-      this.outputNode.gain.setTargetAtTime(value as number, ctx.currentTime, 0.02);
+      this.outputNode.gain.setTargetAtTime(value as number, this.ctx.currentTime, 0.02);
     }
   }
 
@@ -57,9 +59,13 @@ export class PercussionEngine {
     return this.params;
   }
 
-  public triggerKick(velocity: number = 0.9): void {
-    const ctx = this.ctxManager.getContext();
-    const now = ctx.currentTime;
+  /**
+   * @param when Audio-context time at which the hit should start. Defaults to
+   *             "now"; the sequencer passes its lookahead-scheduled time.
+   */
+  public triggerKick(velocity: number = 0.9, when: number = this.ctx.currentTime): void {
+    const ctx = this.ctx;
+    const now = Math.max(when, ctx.currentTime);
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -75,19 +81,12 @@ export class PercussionEngine {
 
     osc.start(now);
     osc.stop(now + this.params.kickDecay);
-
-    setTimeout(() => {
-      try {
-        gain.disconnect();
-      } catch {
-        return;
-      }
-    }, (this.params.kickDecay + 0.05) * 1000);
+    disconnectOnEnded(osc, gain);
   }
 
-  public triggerSnare(velocity: number = 0.8): void {
-    const ctx = this.ctxManager.getContext();
-    const now = ctx.currentTime;
+  public triggerSnare(velocity: number = 0.8, when: number = this.ctx.currentTime): void {
+    const ctx = this.ctx;
+    const now = Math.max(when, ctx.currentTime);
 
     const osc = ctx.createOscillator();
     const oscGain = ctx.createGain();
@@ -101,6 +100,7 @@ export class PercussionEngine {
     oscGain.connect(this.outputNode);
     osc.start(now);
     osc.stop(now + 0.12);
+    disconnectOnEnded(osc, oscGain);
 
     if (this.noiseBuffer) {
       const noise = ctx.createBufferSource();
@@ -120,22 +120,18 @@ export class PercussionEngine {
 
       noise.start(now);
       noise.stop(now + this.params.snareDecay);
-
-      setTimeout(() => {
-        try {
-          noiseGain.disconnect();
-          oscGain.disconnect();
-        } catch {
-          return;
-        }
-      }, (this.params.snareDecay + 0.05) * 1000);
+      disconnectOnEnded(noise, noiseGain, noiseFilter);
     }
   }
 
-  public triggerHiHat(velocity: number = 0.7, open: boolean = false): void {
+  public triggerHiHat(
+    velocity: number = 0.7,
+    open: boolean = false,
+    when: number = this.ctx.currentTime
+  ): void {
     if (!this.noiseBuffer) return;
-    const ctx = this.ctxManager.getContext();
-    const now = ctx.currentTime;
+    const ctx = this.ctx;
+    const now = Math.max(when, ctx.currentTime);
 
     const noise = ctx.createBufferSource();
     noise.buffer = this.noiseBuffer;
@@ -156,13 +152,6 @@ export class PercussionEngine {
 
     noise.start(now);
     noise.stop(now + decayTime);
-
-    setTimeout(() => {
-      try {
-        gain.disconnect();
-      } catch {
-        return;
-      }
-    }, (decayTime + 0.05) * 1000);
+    disconnectOnEnded(noise, gain, bandpass);
   }
 }

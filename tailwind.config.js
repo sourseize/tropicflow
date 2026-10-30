@@ -3,8 +3,17 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  safelist: [
+    'hover:shadow-glow-mango',
+    'hover:shadow-glow-tomato',
+    'hover:shadow-glow-lime',
+    'hover:shadow-glow-papaya',
+  ],
   theme: {
     extend: {
+      gridTemplateColumns: {
+        16: 'repeat(16, minmax(0, 1fr))',
+      },
       colors: {
         jungle: {
           950: '#070f0a',

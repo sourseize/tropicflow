@@ -1,15 +1,26 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { GraphNode, PatchCable } from '../../core/graph/GraphTypes';
-import { INITIAL_NODES, INITIAL_CABLES } from '../../core/graph/NodeGraph';
-import { ModuleCard } from './ModuleCard';
-import { CableRenderer } from '../../core/canvas/CableRenderer';
+import type { GraphNode, PatchCable } from '../../core/graph/GraphTypes.ts';
+import { INITIAL_NODES, INITIAL_CABLES } from '../../core/graph/NodeGraph.ts';
+import { makeCable } from '../../core/graph/PatchRouter.ts';
+import { AudioEngine } from '../../core/audio/AudioEngine.ts';
+import { ModuleCard } from './ModuleCard.tsx';
+import { CableRenderer } from '../../core/canvas/CableRenderer.ts';
 import { Plus, Trash2 } from 'lucide-react';
 
+let cableCounter = 0;
+const CABLE_COLORS = ['#FF9E00', '#FF382E', '#70E000', '#FF6B35'];
+
 export const ModularCanvas: React.FC = () => {
+  const engine = AudioEngine.getInstance();
   const [nodes, setNodes] = useState<GraphNode[]>(INITIAL_NODES);
-  const [cables, setCables] = useState<PatchCable[]>(INITIAL_CABLES);
+  const [cables, setCables] = useState<PatchCable[]>(() => engine.getPatch());
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Cables are the source of truth for audio routing and trigger gating.
+  useEffect(() => {
+    engine.applyPatch(cables);
+  }, [cables, engine]);
 
   const draggingNodeRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
 
@@ -118,6 +129,27 @@ export const ModularCanvas: React.FC = () => {
     }
   };
 
+  /** Dropping a dragged cable on a jack creates the connection (if legal). */
+  const handlePortMouseUp = (e: React.MouseEvent, _nodeId: string, portId: string) => {
+    if (!activeCable) return;
+    e.stopPropagation();
+    const cable = makeCable(nodes, activeCable.fromPortId, portId, `cable-u${++cableCounter}`, activeCable.color);
+    setActiveCable(null);
+    draggingNodeRef.current = null;
+    if (!cable) return;
+    setCables((prev) => {
+      const duplicate = prev.some(
+        (c) => c.fromPortId === cable.fromPortId && c.toPortId === cable.toPortId
+      );
+      return duplicate ? prev : [...prev, cable];
+    });
+  };
+
+  /** Double-clicking a jack unplugs every cable attached to it. */
+  const handlePortDoubleClick = (_e: React.MouseEvent, _nodeId: string, portId: string) => {
+    setCables((prev) => prev.filter((c) => c.fromPortId !== portId && c.toPortId !== portId));
+  };
+
   const handlePortMouseDown = (
     e: React.MouseEvent,
     nodeId: string,
@@ -132,8 +164,7 @@ export const ModularCanvas: React.FC = () => {
       y: e.clientY - rect.top,
     };
 
-    const colors = ['#FF9E00', '#FF382E', '#70E000', '#FF6B35'];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    const randomColor = CABLE_COLORS[cableCounter % CABLE_COLORS.length];
 
     setActiveCable({
       fromNodeId: nodeId,
@@ -182,7 +213,7 @@ export const ModularCanvas: React.FC = () => {
         ref={canvasRef}
         width={2000}
         height={1200}
-        className="absolute inset-0 pointer-events-none z-20"
+        className="patch-cable-layer z-20"
       />
 
       {nodes.map((node) => (
@@ -191,6 +222,8 @@ export const ModularCanvas: React.FC = () => {
           node={node}
           onDragStart={handleDragStart}
           onPortMouseDown={handlePortMouseDown}
+          onPortMouseUp={handlePortMouseUp}
+          onPortDoubleClick={handlePortDoubleClick}
         />
       ))}
     </div>

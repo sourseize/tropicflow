@@ -1,4 +1,4 @@
-import { DomainEvent, DomainEventType } from './DomainEvents';
+import type { DomainEvent, DomainEventType } from './DomainEvents.ts';
 
 type EventHandler<T extends DomainEvent = DomainEvent> = (event: T) => void;
 

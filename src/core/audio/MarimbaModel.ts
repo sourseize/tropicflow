@@ -1,4 +1,4 @@
-import { AudioContextManager } from './AudioContextManager';
+import { disconnectOnEnded } from './AudioContextManager.ts';
 
 export interface MarimbaParams {
   brightness: number;
@@ -16,13 +16,11 @@ export const DEFAULT_MARIMBA_PARAMS: MarimbaParams = {
 
 export class MarimbaModel {
   public readonly outputNode: GainNode;
-  private readonly ctxManager: AudioContextManager;
+  private readonly ctx: BaseAudioContext;
   private params: MarimbaParams = { ...DEFAULT_MARIMBA_PARAMS };
 
-  constructor() {
-    this.ctxManager = AudioContextManager.getInstance();
-    const ctx = this.ctxManager.getContext();
-
+  constructor(ctx: BaseAudioContext) {
+    this.ctx = ctx;
     this.outputNode = ctx.createGain();
     this.outputNode.gain.setValueAtTime(this.params.volume, ctx.currentTime);
   }
@@ -30,8 +28,7 @@ export class MarimbaModel {
   public updateParam<K extends keyof MarimbaParams>(key: K, value: MarimbaParams[K]): void {
     this.params[key] = value;
     if (key === 'volume') {
-      const ctx = this.ctxManager.getContext();
-      this.outputNode.gain.setTargetAtTime(value as number, ctx.currentTime, 0.02);
+      this.outputNode.gain.setTargetAtTime(value as number, this.ctx.currentTime, 0.02);
     }
   }
 
@@ -39,9 +36,12 @@ export class MarimbaModel {
     return this.params;
   }
 
-  public strike(frequency: number, velocity: number = 0.8): void {
-    const ctx = this.ctxManager.getContext();
-    const now = ctx.currentTime;
+  /**
+   * @param when Audio-context time of the strike (defaults to now).
+   */
+  public strike(frequency: number, velocity: number = 0.8, when: number = this.ctx.currentTime): void {
+    const ctx = this.ctx;
+    const now = Math.max(when, ctx.currentTime);
 
     const carrier = ctx.createOscillator();
     carrier.type = 'sine';
@@ -74,14 +74,6 @@ export class MarimbaModel {
     const stopTime = now + decayDuration + 0.05;
     carrier.stop(stopTime);
     modulator.stop(stopTime);
-
-    setTimeout(() => {
-      try {
-        ampGain.disconnect();
-        modGain.disconnect();
-      } catch {
-        return;
-      }
-    }, (decayDuration + 0.1) * 1000);
+    disconnectOnEnded(carrier, ampGain, modGain);
   }
 }

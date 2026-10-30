@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { AudioEngine } from '../../core/audio/AudioEngine';
-import { EventBus } from '../../core/events/EventBus';
-import { StepTriggeredEvent } from '../../core/events/DomainEvents';
+import { AudioEngine } from '../../core/audio/AudioEngine.ts';
+import { EventBus } from '../../core/events/EventBus.ts';
+import type { StepTriggeredEvent } from '../../core/events/DomainEvents.ts';
 import { Music, Volume2, Sparkles, Disc } from 'lucide-react';
 
 export const StepSequencer: React.FC = () => {
@@ -12,13 +12,22 @@ export const StepSequencer: React.FC = () => {
 
   useEffect(() => {
     const eventBus = EventBus.getInstance();
+    const timers = new Set<ReturnType<typeof setTimeout>>();
     const unsubscribe = eventBus.subscribe<StepTriggeredEvent>('STEP_TRIGGERED', (event) => {
-      setCurrentStep(event.stepIndex);
-      setActiveTracks(event.activeTracks);
+      // Steps are scheduled up to 100 ms ahead of the audio clock; delay the
+      // visual update so the playhead moves when the step actually sounds.
+      const leadMs = Math.max(0, (event.audioTime - event.contextTime) * 1000);
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        setCurrentStep(event.stepIndex);
+        setActiveTracks(event.activeTracks);
+      }, leadMs);
+      timers.add(timer);
     });
 
     return () => {
       unsubscribe();
+      timers.forEach((t) => clearTimeout(t));
     };
   }, []);
 
