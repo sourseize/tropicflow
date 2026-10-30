@@ -3,9 +3,12 @@
  *
  *   npm run render:wav -- --preset default-groove --bars 2 --out out.wav
  *   npm run render:wav -- --config my-config.json --out out.wav --score out.score.json
+ *   npm run render:wav -- --preset chamber-only --ogg 128 --out out/chamber.wav   (+ out/chamber.ogg)
  *
  * Writes <out>.wav (master output), <out>.score.json (scheduled notes) and,
  * with --tap, the pre-compressor tap used for exact timing verification.
+ * With --ogg <kbps> the master output is also encoded to Ogg Opus by the
+ * browser's WebCodecs encoder (verify it with `npm run inspect:ogg`).
  */
 import { parseArgs } from 'node:util';
 import fs from 'node:fs';
@@ -31,6 +34,8 @@ const { values } = parseArgs({
     /** Bypass the delay (wet mix 0) so stems contain only direct hits. */
     dry: { type: 'boolean', default: false },
     'list-presets': { type: 'boolean', default: false },
+    /** Also write <out>.ogg (Opus) at this bitrate in kb/s. */
+    ogg: { type: 'string' },
   },
 });
 
@@ -55,9 +60,11 @@ async function main(): Promise<void> {
     if (values.solo) config.solo = values.solo.split(',').map((t) => t.trim());
     if (values.dry) config.delay = { ...(config.delay ?? {}), mix: 0 };
     const bitDepth = Number(values['bit-depth']) as WavBitDepth;
+    const oggKbps = values.ogg ? Number(values.ogg) : undefined;
+    if (oggKbps !== undefined && !(oggKbps >= 6 && oggKbps <= 510)) throw new Error('--ogg expects a bitrate in kb/s between 6 and 510');
 
     const started = Date.now();
-    const result = await renderer.render(config, bitDepth);
+    const result = await renderer.render(config, bitDepth, oggKbps);
     const outPath = path.resolve(values.out!);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, result.wav);
@@ -73,6 +80,11 @@ async function main(): Promise<void> {
     console.log(`  wav:   ${outPath}`);
     console.log(`  score: ${scorePath} (${result.score.length} note events, bus latency ${(result.busLatency * 1000).toFixed(2)} ms)`);
     if (values.tap) console.log(`  tap:   ${path.resolve(values.tap)} (pre-compressor)`);
+    if (result.ogg) {
+      const oggPath = outPath.replace(/\.wav$/i, '') + '.ogg';
+      fs.writeFileSync(oggPath, result.ogg);
+      console.log(`  ogg:   ${oggPath} (${(result.ogg.length / 1024).toFixed(0)} KB, Opus ${oggKbps} kb/s via ${result.oggEngine})`);
+    }
   } finally {
     await renderer.close();
   }

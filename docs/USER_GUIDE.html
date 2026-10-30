@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TROPICFLOW — User Guide</title>
+<style>
+  :root {
+    --jungle-950: #070f0a; --jungle-900: #0c1a12; --jungle-850: #112319; --jungle-800: #162c20; --jungle-700: #1f3c2c; --jungle-600: #2b533d;
+    --mango: #ff9e00; --mango-300: #ffd073; --papaya: #ff6b35; --tomato: #ff382e; --lime: #70e000; --lime-300: #bcf74a;
+    --cream: #fbf8f2; --cream-dim: rgba(245, 238, 225, 0.62); --cream-faint: rgba(245, 238, 225, 0.4);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--jungle-950); color: var(--cream);
+    font-family: "Space Grotesk", "Outfit", Inter, system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.6;
+    background-image: linear-gradient(to right, rgba(43, 83, 61, 0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(43, 83, 61, 0.12) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  code, kbd, .mono { font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { background: var(--jungle-850); border: 1px solid var(--jungle-700); border-radius: 6px; padding: 0.08em 0.4em; font-size: 0.88em; color: var(--mango-300); }
+  pre { background: var(--jungle-900); border: 1px solid var(--jungle-700); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 0.85em; line-height: 1.5; }
+  pre code { background: none; border: none; padding: 0; color: var(--cream); }
+  kbd { display: inline-block; min-width: 1.6em; text-align: center; background: var(--jungle-800); border: 1px solid var(--jungle-600); border-bottom-width: 3px; border-radius: 6px; padding: 0 0.45em; font-size: 0.82em; color: var(--cream); }
+  a { color: var(--lime); text-decoration: none; } a:hover { text-decoration: underline; }
+
+  .topbar { position: sticky; top: 0; z-index: 10; background: var(--jungle-900); border-bottom: 1px solid var(--jungle-700); box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+  .topbar .inner { max-width: 1180px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 14px; }
+  .logo { width: 40px; height: 40px; border-radius: 12px; padding: 2px; background: linear-gradient(135deg, var(--mango), var(--papaya), var(--tomato)); box-shadow: 0 0 25px -3px rgba(255,158,0,0.4); }
+  .logo div { width: 100%; height: 100%; border-radius: 10px; background: var(--jungle-950); display: grid; place-items: center; font-size: 20px; }
+  .wordmark { font-weight: 800; letter-spacing: -0.02em; font-size: 18px; }
+  .wordmark span { background: linear-gradient(90deg, var(--mango), var(--papaya), var(--tomato)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tag { font-family: ui-monospace, monospace; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(112,224,0,0.2); color: var(--lime); border: 1px solid rgba(112,224,0,0.4); }
+  .topbar .sub { color: var(--cream-faint); font-size: 12px; font-family: ui-monospace, monospace; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; display: grid; grid-template-columns: 230px 1fr; gap: 40px; }
+  nav.toc { position: sticky; top: 84px; align-self: start; font-size: 13px; }
+  nav.toc ol { list-style: none; padding: 0; margin: 0; border-left: 1px solid var(--jungle-700); }
+  nav.toc li a { display: block; padding: 5px 12px; color: var(--cream-dim); border-left: 2px solid transparent; margin-left: -1px; }
+  nav.toc li a:hover { color: var(--cream); border-left-color: var(--mango); text-decoration: none; }
+  nav.toc .h { font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cream-faint); margin: 0 0 8px 12px; }
+
+  main h1 { font-size: 36px; letter-spacing: -0.03em; margin: 0 0 8px; line-height: 1.15; }
+  main h1 span { background: linear-gradient(90deg, var(--mango), var(--papaya), var(--tomato)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { color: var(--cream-dim); font-size: 18px; margin-bottom: 28px; }
+  section { margin-top: 56px; scroll-margin-top: 90px; }
+  section h2 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  section h2::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--mango); box-shadow: 0 0 12px var(--mango); }
+  section h2.lime::before { background: var(--lime); box-shadow: 0 0 12px var(--lime); }
+  section h2.tomato::before { background: var(--tomato); box-shadow: 0 0 12px var(--tomato); }
+  section h2.papaya::before { background: var(--papaya); box-shadow: 0 0 12px var(--papaya); }
+  section h3 { font-size: 17px; margin: 28px 0 6px; color: var(--mango-300); }
+  .stripe { height: 3px; width: 64px; border-radius: 2px; background: linear-gradient(90deg, var(--mango), var(--papaya), var(--tomato)); margin: 6px 0 18px; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; } li { margin: 4px 0; }
+
+  figure { margin: 18px 0; }
+  figure img { display: block; max-width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--jungle-700); box-shadow: 0 20px 50px rgba(0,0,0,0.5); background: var(--jungle-900); }
+  figure.inline img { display: inline-block; vertical-align: top; margin-right: 12px; margin-bottom: 12px; }
+  figcaption { font-family: ui-monospace, monospace; font-size: 12px; color: var(--cream-faint); margin-top: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } nav.toc { position: static; } .grid2 { grid-template-columns: 1fr; } }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--jungle-800); vertical-align: top; }
+  th { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cream-faint); background: var(--jungle-900); }
+  tr:hover td { background: rgba(255,255,255,0.015); }
+
+  .callout { border: 1px solid var(--jungle-700); border-left: 4px solid var(--mango); background: var(--jungle-900); border-radius: 12px; padding: 12px 16px; margin: 16px 0; }
+  .callout.lime { border-left-color: var(--lime); } .callout.tomato { border-left-color: var(--tomato); } .callout.papaya { border-left-color: var(--papaya); }
+  .callout .t { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; color: var(--mango); margin-bottom: 4px; }
+  .callout.lime .t { color: var(--lime); } .callout.tomato .t { color: var(--tomato); } .callout.papaya .t { color: var(--papaya); }
+  .pill { display: inline-block; font-family: ui-monospace, monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; border: 1px solid; text-transform: uppercase; }
+  .pill.mango { color: var(--mango); border-color: rgba(255,158,0,0.4); background: rgba(255,158,0,0.12); }
+  .pill.lime { color: var(--lime); border-color: rgba(112,224,0,0.4); background: rgba(112,224,0,0.12); }
+  .pill.tomato { color: var(--tomato); border-color: rgba(255,56,46,0.4); background: rgba(255,56,46,0.12); }
+  footer { margin-top: 60px; color: var(--cream-faint); font-size: 12px; font-family: ui-monospace, monospace; border-top: 1px solid var(--jungle-800); padding-top: 16px; }
+</style>
+</head>
+<body>
+
+<div class="topbar"><div class="inner">
+  <div class="logo"><div>🥭</div></div>
+  <div>
+    <div class="wordmark">TROPIC<span>FLOW</span> <span class="tag" style="margin-left:8px">USER GUIDE</span></div>
+    <div class="sub">Modular Audio-Visual Synthesis &amp; Physics Computing · local-first · 100 % offline</div>
+  </div>
+</div></div>
+
+<div class="wrap">
+<nav class="toc">
+  <div class="h">Contents</div>
+  <ol>
+    <li><a href="#start">Getting started</a></li>
+    <li><a href="#transport">Header &amp; transport</a></li>
+    <li><a href="#canvas">Modular canvas &amp; cables</a></li>
+    <li><a href="#sequencer">Groove matrix</a></li>
+    <li><a href="#keys">Soundboard &amp; keys</a></li>
+    <li><a href="#analyzer">Jungle analyzer</a></li>
+    <li><a href="#chamber">Gravity chamber</a></li>
+    <li><a href="#record">Recording a take</a></li>
+    <li><a href="#export">Exporting WAV / OGG</a></li>
+    <li><a href="#bounce">Bounce &amp; score</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#cli">Command-line tools</a></li>
+    <li><a href="#shortcuts">Shortcuts</a></li>
+  </ol>
+</nav>
+
+<main>
+  <h1>Play tropical instruments, drop balls in a <span>gravity chamber</span>, record what you hear.</h1>
+  <p class="lead">TROPICFLOW is a modular sound workstation that runs entirely in your browser. This guide walks through every panel, then shows how to record a live take and export it losslessly (WAV) or compressed (OGG / Opus).</p>
+  <figure><img src="images/app-playing.png" alt="TROPICFLOW while the groove plays: header, modular canvas with patch cables, gravity chamber, groove matrix, soundboard and analyzer"><figcaption>The whole workstation while the groove plays. Cables carry audio (orange) and triggers (green / red).</figcaption></figure>
+
+  <section id="start">
+    <h2 class="lime">Getting started</h2><div class="stripe"></div>
+    <pre><code>npm install          # everything the app needs (no devDependencies)
+npm run build        # type-check + production build -> dist/
+npm start            # serve dist/ at http://localhost:4173
+npm run dev          # or the Vite dev server with hot reload at http://localhost:5173</code></pre>
+    <p>Open <code>http://localhost:4173</code> in a current Chrome, Edge, Firefox or Safari. Click anywhere once if the browser asks for a user gesture before playing audio.</p>
+    <div class="callout lime"><div class="t">Use localhost or https</div>
+      Recording taps the master bus through an <em>AudioWorklet</em>, which browsers only provide in a <strong>secure context</strong>: <code>http://localhost</code> or any <code>https://</code> address. If you open the app through a plain <code>http://192.168.x.x</code> network URL, REC is disabled and says so (see <a href="#trouble">Troubleshooting</a>). Everything else, including OGG export, still works there.</div>
+  </section>
+
+  <section id="transport">
+    <h2>Header &amp; transport</h2><div class="stripe"></div>
+    <figure><img src="images/header-idle.png" alt="The header: START GROOVE, REC with MAX slider, TEMPO, BOUNCE, MASTER"><figcaption>Left to right: transport, recording controls, tempo, bounce, master volume.</figcaption></figure>
+    <table>
+      <tr><th>Control</th><th>What it does</th></tr>
+      <tr><td><span class="pill mango">Start groove</span> / <span class="pill tomato">Stop engine</span></td><td>Runs the clock. Every step is scheduled on the Web Audio timeline at its exact time, so there is no timer jitter. Stopping rewinds the sequencer and freezes the chamber.</td></tr>
+      <tr><td><span class="pill tomato">REC</span> + <strong>MAX</strong></td><td>Tick REC to record what you hear while the groove runs; MAX (1–10 min) is the longest take. Details in <a href="#record">Recording a take</a>.</td></tr>
+      <tr><td><strong>TEMPO</strong></td><td>60–180 BPM. Changes take effect on the next scheduled step; the chamber's physics are tempo-independent.</td></tr>
+      <tr><td><strong>BOUNCE</strong> + bars</td><td>Renders the current patch offline (faster than realtime) and opens the export dialog; <strong>SCORE</strong> appears afterwards to download the note list. See <a href="#bounce">Bounce &amp; score</a>.</td></tr>
+      <tr><td><strong>MASTER</strong></td><td>Output volume after the limiter. Recordings capture the signal <em>after</em> this slider ("what you hear").</td></tr>
+    </table>
+  </section>
+
+  <section id="canvas">
+    <h2 class="papaya">Modular canvas &amp; cables</h2><div class="stripe"></div>
+    <figure><img src="images/modular-canvas.png" alt="Eurorack-style modules with sagging patch cables"><figcaption>Seven modules: Tropic Clock, Mango Marimba, Tropical Tape Delay, Gravity Chamber, Tomato Drums, Papaya Acid Lead, Jungle Master Bus.</figcaption></figure>
+    <p>Drag a module by its title bar. Turn a knob by dragging up or down on it. Cables are <em>functional</em>: audio cables route signal, trigger cables decide which modules the clock (or the chamber) fires.</p>
+    <ul>
+      <li><strong>Connect</strong>: drag from a jack to a compatible jack (output → input of the same family). Illegal pairs, e.g. a trigger into an audio input, are refused.</li>
+      <li><strong>Unplug</strong>: double-click a jack.</li>
+      <li><strong>RESET PATCH</strong> restores the default routing; <strong>DISCONNECT ALL</strong> clears every cable (silence!).</li>
+    </ul>
+    <div class="grid2">
+      <figure><img src="images/module-clock.png" alt="Tropic Clock module"><figcaption>TROPIC CLOCK: tempo and swing; TRIG OUT drives the instruments.</figcaption></figure>
+      <figure><img src="images/module-delay.png" alt="Tropical Tape Delay module"><figcaption>TROPICAL TAPE DELAY: time, damped feedback and wet mix.</figcaption></figure>
+    </div>
+    <table>
+      <tr><th>Module</th><th>Voice</th><th>Knobs</th></tr>
+      <tr><td>Mango Marimba</td><td>FM acoustic model</td><td>Mallet hardness, ring time, volume</td></tr>
+      <tr><td>Tomato Drums</td><td>Analog kick / snare / hi-hat</td><td>Kick tune, snare snap, hat sizzle</td></tr>
+      <tr><td>Papaya Acid Lead</td><td>Dual oscillator + resonant filter</td><td>Cutoff, resonance, detune</td></tr>
+      <tr><td>Tropical Tape Delay</td><td>Tape echo with damped feedback</td><td>Time, feedback, wet mix</td></tr>
+      <tr><td>Jungle Master Bus</td><td>Limiter + analyser</td><td>Master volume (same as the header slider)</td></tr>
+    </table>
+  </section>
+
+  <section id="sequencer">
+    <h2>Groove matrix</h2><div class="stripe"></div>
+    <figure><img src="images/sequencer.png" alt="16-step groove matrix with five tracks"><figcaption>Click a cell to toggle it; the playhead follows the moment each step actually sounds.</figcaption></figure>
+    <p>Sixteen 16th-note steps for Kick, Snare, Hi-hat, Marimba and Bass/Synth. Hi-hats on every third step of a beat open automatically; marimba and synth notes cycle through a scale. Swing (on the clock module) lengthens even steps and shortens odd ones. A track only sounds if its module's TRIG IN is cabled from the clock.</p>
+  </section>
+
+  <section id="keys">
+    <h2 class="papaya">Soundboard &amp; keys</h2><div class="stripe"></div>
+    <figure><img src="images/keyboard.png" alt="Virtual keyboard with computer key labels"><figcaption>Click the keys or play them from the computer keyboard.</figcaption></figure>
+    <p>Choose <strong>MARIMBA</strong> or <strong>LEAD SYNTH</strong>, then play with the mouse or the keys <kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>T</kbd> <kbd>G</kbd> <kbd>Y</kbd> <kbd>H</kbd> <kbd>U</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>O</kbd> <kbd>L</kbd> <kbd>;</kbd>. Keyboard notes are part of "what you hear", so they end up in a take when the groove is running and REC is ticked.</p>
+  </section>
+
+  <section id="analyzer">
+    <h2 class="lime">Jungle analyzer</h2><div class="stripe"></div>
+    <figure><img src="images/visualizer.png" alt="Oscilloscope view of the master output"><figcaption>SCOPE shows the waveform, FFT a 64-band spectrum, both taken from the master bus.</figcaption></figure>
+  </section>
+
+  <section id="chamber">
+    <h2>Gravity chamber</h2><div class="stripe"></div>
+    <p>A deterministic 2-D physics box patched into the canvas. Balls fall under gravity and <em>every collision triggers a note</em> through the collision mapper. Which instruments it may play is decided by cables from its TRIG jack, exactly like the clock's TRIG OUT.</p>
+    <div class="grid2">
+      <figure><img src="images/gravity-chamber.png" alt="Gravity chamber with two balls and numbered pegs"><figcaption>Balls, numbered pegs (the number is the scale degree) and the controls below.</figcaption></figure>
+      <figure><img src="images/chamber-mapping.png" alt="Gravity chamber with the collision mapping panel open"><figcaption>MAPPING: surface → instrument, scale and root note.</figcaption></figure>
+    </div>
+    <table>
+      <tr><th>Action</th><th>How</th></tr>
+      <tr><td>Drop a ball</td><td><strong>DROP BALL</strong>, or click inside the box at the x position you want. <strong>NOW / ON BAR</strong> chooses whether a drop happens immediately or on the next bar start.</td></tr>
+      <tr><td>Add / remove a peg</td><td><kbd>Shift</kbd>+click adds one; <kbd>Alt</kbd>+click removes it. Drag a peg to move it; the mouse wheel over a peg changes its note.</td></tr>
+      <tr><td>Draw a ramp</td><td><kbd>Ctrl</kbd>+drag. <kbd>Alt</kbd>+click removes it.</td></tr>
+      <tr><td>Knobs</td><td><strong>GRAVITY</strong>, <strong>BOUNCE</strong> (restitution), <strong>QUANTIZE</strong> (pulls hits toward the 16th grid, 0 = free physics), <strong>DROP EVERY</strong> (auto-drop every N bars).</td></tr>
+      <tr><td>Save / load</td><td><strong>EXPORT</strong> / <strong>IMPORT</strong> the chamber as JSON.</td></tr>
+      <tr><td>CLEAR</td><td>Removes all balls (pegs and ramps stay).</td></tr>
+    </table>
+    <p>Collision times are solved analytically inside the 1 ms physics sub-step, so hits are timed to nanoseconds; the same simulation runs in the browser and in Node, which is how the test-suite verifies it.</p>
+  </section>
+
+  <section id="record">
+    <h2 class="tomato">Recording a take</h2><div class="stripe"></div>
+    <p>Recording captures exactly what reaches your speakers — sequencer, chamber hits, keyboard notes, knob moves, delay tails — as 32-bit float stereo at the audio device's sample rate, sample-accurately, through an AudioWorklet tap after the master volume.</p>
+    <figure class="inline">
+      <img src="images/header-armed.png" alt="REC ticked, status ARMED">
+      <img src="images/header-recording.png" alt="Recording: elapsed 00:03 of 02:00, tomato glow">
+      <img src="images/header-take.png" alt="Take of 3 seconds ready with EXPORT button">
+      <figcaption>Armed → recording (elapsed / MAX) → take ready.</figcaption>
+    </figure>
+    <h3>The rules</h3>
+    <ul>
+      <li>Recording runs while the <strong>transport plays and REC is ticked</strong>. Tick REC, then START GROOVE — or tick it mid-groove to start right away.</li>
+      <li><strong>STOP ENGINE</strong>, unticking REC, or reaching <strong>MAX</strong> finalises the take. When MAX is reached the groove keeps playing; the header says <em>max length reached</em>.</li>
+      <li>Keyboard notes played while the engine is <em>stopped</em> are not recorded.</li>
+      <li>A new take <strong>replaces</strong> the previous one. Export a take you want to keep before recording again.</li>
+      <li><strong>MAX</strong>: 1–10 minutes, default 1. A minute of stereo audio is about 23 MB in memory, hence the ceiling.</li>
+    </ul>
+    <div class="callout"><div class="t">Sample-exact timing</div>
+      Each take knows the exact audio-context time of its first sample (a sync marker is scheduled on the same timeline as the notes), so a note scheduled at <code>t</code> sits at <code>t − start + 6 ms</code> in the file — the 6 ms being the limiter's lookahead. The end-to-end tests verify this to under 1 ms mean error.</div>
+  </section>
+
+  <section id="export">
+    <h2>Exporting WAV / OGG</h2><div class="stripe"></div>
+    <p>Click <strong>EXPORT</strong> in the header (for a take) or <strong>BOUNCE</strong> (for an offline render). The dialog is the same.</p>
+    <div class="grid2">
+      <figure><img src="images/export-wav.png" alt="Export dialog with WAV selected"><figcaption>WAV: lossless, 16/24-bit PCM or 32-bit float.</figcaption></figure>
+      <figure><img src="images/export-ogg.png" alt="Export dialog with OGG selected and a 2 second range from 0.5 s"><figcaption>OGG: Opus at 64–256 kb/s; START and DURATION sliders pick the range.</figcaption></figure>
+    </div>
+    <table>
+      <tr><th>Parameter</th><th>Values</th></tr>
+      <tr><td>Format</td><td><strong>WAV</strong> lossless (16 / 24-bit PCM or 32-bit float) or <strong>OGG</strong> (Opus, variable bitrate)</td></tr>
+      <tr><td>Start / Duration</td><td>Sliders in 0.1 s steps. Clamped to the source; an end within 50 ms of the source end means "to the end". <em>select all</em> restores the whole take.</td></tr>
+      <tr><td>Bit depth (WAV)</td><td>32-bit float keeps the mix exactly as rendered; 24-bit and 16-bit for compatibility.</td></tr>
+      <tr><td>Bitrate (OGG)</td><td>64, 96, <strong>128</strong> (default), 160, 192, 256 kb/s. 128 is transparent for most material.</td></tr>
+      <tr><td>Edges</td><td>A 5 ms fade-in/out at the cut points so slices never click.</td></tr>
+      <tr><td>Size estimate</td><td>Shown next to the timeline, updated live.</td></tr>
+    </table>
+    <figure><img src="images/export-progress.png" alt="Export dialog while encoding with a progress bar at 40 %"><figcaption>Encoding with the progress bar; ABORT stops it without downloading.</figcaption></figure>
+    <h3>File names</h3>
+    <p>Names encode the settings so exports never overwrite each other: <code>tropicflow-take-118bpm-20250101-1432.wav</code>, <code>tropicflow-take-118bpm-20250101-1432-2.5s-8s-96k.ogg</code>, <code>tropicflow-118bpm-2bars-24bit.wav</code>. A full-range 32-bit float bounce keeps the plain <code>tropicflow-&lt;bpm&gt;bpm-&lt;bars&gt;bars.wav</code>.</p>
+    <h3>How OGG is made</h3>
+    <p>Opus is encoded by the browser itself — WebCodecs <code>AudioEncoder</code> where available (Chrome, Edge, Firefox 130+, Safari 16.4+; faster than realtime) — and wrapped into an Ogg container by TROPICFLOW. The file decodes to exactly the requested duration (the final frame's padding is trimmed through the Ogg granule position) and carries <code>ENCODER=tropicflow</code> tags. No external service, library or network request is involved.</p>
+    <div class="callout papaya"><div class="t">Realtime encode</div>
+      Where WebCodecs is missing (older Firefox, or an <code>http://&lt;ip&gt;</code> address), the dialog says <em>realtime encode</em>: the slice is played through <code>MediaRecorder</code>, so a 30 s slice takes about 31 s. The result is still exact: a sync burst is played ahead of the slice, located after decoding, and trimmed away with Ogg's pre-skip.</div>
+  </section>
+
+  <section id="bounce">
+    <h2 class="lime">Bounce &amp; score</h2><div class="stripe"></div>
+    <div class="grid2">
+      <figure><img src="images/bounce-dialog.png" alt="Export dialog for a 2-bar bounce"><figcaption>A bounce opens the same dialog, labelled BOUNCE 2 BARS.</figcaption></figure>
+      <figure><img src="images/header-bounce.png" alt="Header after a bounce: SCORE button next to BOUNCE"><figcaption>After a bounce, SCORE downloads the JSON note list.</figcaption></figure>
+    </div>
+    <p>BOUNCE renders the <em>current</em> patch — sequencer and chamber from its current ball state — offline with the same engine, voices and clock, so two bounces of the same patch are equivalent to within floating-point noise. Unlike a take, a bounce contains nothing you played live; it is the deterministic version of the groove. Choose 1, 2, 4 or 8 bars next to the button.</p>
+    <p>The <strong>score</strong> lists every scheduled note (time, audible time, source, track, frequency, velocity, collision) and lets software verify the audio: <code>npm run compare:wav -- groove.wav --score groove.score.json</code>.</p>
+  </section>
+
+  <section id="trouble">
+    <h2 class="tomato">Troubleshooting</h2><div class="stripe"></div>
+    <figure><img src="images/header-insecure.png" alt="Header with REC disabled and the text NEEDS LOCALHOST / HTTPS"><figcaption>Opened over a plain http network address: REC is disabled with the reason.</figcaption></figure>
+    <table>
+      <tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+      <tr><td>REC greyed out, <em>NEEDS LOCALHOST / HTTPS</em></td><td>Insecure context: browsers hide AudioWorklet on <code>http://</code> addresses other than localhost</td><td>Open <code>http://localhost:4173</code> (or serve over https)</td></tr>
+      <tr><td>REC greyed out, <em>NO AUDIOWORKLET</em></td><td>Very old browser</td><td>Update Chrome / Edge / Firefox / Safari</td></tr>
+      <tr><td>OGG says <em>realtime encode</em></td><td>No WebCodecs in this browser / context</td><td>Works, just slower; Chrome, Edge, Firefox 130+ on localhost/https encode in a second</td></tr>
+      <tr><td>OGG greyed out</td><td>Neither WebCodecs nor a MediaRecorder Opus codec (e.g. older Safari)</td><td>Export WAV, or use another browser</td></tr>
+      <tr><td>No sound at all</td><td>Browser autoplay policy</td><td>Click START GROOVE (a user gesture); check MASTER and the master bus cable</td></tr>
+      <tr><td>Take shorter than expected</td><td>MAX reached, or REC was unticked</td><td>Raise MAX (up to 10 min)</td></tr>
+      <tr><td>Exported range clamped</td><td>Start + duration exceeded the take</td><td>The sliders show the real range; <em>select all</em> for everything</td></tr>
+    </table>
+  </section>
+
+  <section id="cli">
+    <h2 class="papaya">Command-line tools</h2><div class="stripe"></div>
+    <p>Everything the UI does can be reproduced and verified from the terminal (Node 22.18+, headless Chromium set up once with <code>npm run setup</code>).</p>
+    <pre><code># Render a preset to WAV + score; --ogg also writes an Opus file via the browser's encoder
+npm run render:wav -- --preset default-groove --bars 2 --out out/groove.wav
+npm run render:wav -- --preset chamber-only --ogg 128 --out out/chamber.wav      # + out/chamber.ogg
+
+# Validate an Ogg Opus file (CRCs, headers, granules, duration) - no ffmpeg needed
+npm run inspect:ogg -- out/chamber.ogg
+npm run inspect:ogg -- my-export.ogg --expect-seconds 8 --json
+
+# Compare two WAVs, or a WAV against its score
+npm run compare:wav -- out/groove.wav tests/golden/default-groove-1bar.wav
+npm run compare:wav -- out/groove.wav --score out/groove.score.json
+
+# Regenerate the screenshots in this guide
+npm run docs:shots
+
+# Tests: unit (pure Node, milliseconds) and end-to-end (real Web Audio in Chromium)
+npm test</code></pre>
+  </section>
+
+  <section id="shortcuts">
+    <h2>Shortcuts</h2><div class="stripe"></div>
+    <table>
+      <tr><th>Where</th><th>Gesture</th><th>Effect</th></tr>
+      <tr><td>Anywhere</td><td><kbd>A</kbd>…<kbd>;</kbd></td><td>Play the soundboard (marimba or lead)</td></tr>
+      <tr><td>Canvas</td><td>Drag jack → jack</td><td>Connect a cable</td></tr>
+      <tr><td>Canvas</td><td>Double-click jack</td><td>Unplug</td></tr>
+      <tr><td>Knob</td><td>Drag up / down</td><td>Change value</td></tr>
+      <tr><td>Chamber</td><td>Click</td><td>Drop a ball at x</td></tr>
+      <tr><td>Chamber</td><td><kbd>Shift</kbd>+click / <kbd>Alt</kbd>+click</td><td>Add / remove a peg or ramp</td></tr>
+      <tr><td>Chamber</td><td><kbd>Ctrl</kbd>+drag</td><td>Draw a ramp</td></tr>
+      <tr><td>Chamber</td><td>Wheel over a peg</td><td>Change its note</td></tr>
+      <tr><td>Export dialog</td><td><kbd>Esc</kbd></td><td>Close (not while encoding — use ABORT)</td></tr>
+    </table>
+  </section>
+
+  <footer>TROPICFLOW user guide · screenshots generated with <code>npm run docs:shots</code> from the production build · this document uses no external resources.</footer>
+</main>
+</div>
+</body>
+</html>

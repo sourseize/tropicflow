@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrowserRenderer, type BrowserRenderResult } from '../../scripts/lib/browserRender.ts';
 import { decodeWav } from '../../src/core/render/WavCodec.ts';
+import { inspectOggOpus } from '../../src/core/export/OggOpus.ts';
 import {
   bandRise,
   compareBuffers,
@@ -269,6 +270,27 @@ describe('offline render (headless Chromium)', () => {
       for (const c of v.checks) bySource[c.event.source as 'sequencer' | 'chamber']++;
       console.log(`    ${track} stem: ${bySource.sequencer} sequencer + ${bySource.chamber} chamber notes verified, ${v.masked.length} masked (max ${v.maxAbsErrorMs.toFixed(2)} ms)`);
     }
+  });
+
+  test('harness runs in a secure context and encodes a render to Ogg Opus of exactly the rendered length', async () => {
+    const caps = await renderer.capabilities();
+    assert.equal(caps.secureContext, true, 'harness page must be served from localhost (WebCodecs / AudioWorklet need a secure context)');
+    assert.equal(caps.opusEngine, 'webcodecs');
+
+    const r = await renderer.render({ ...groove, bars: 1 }, 32, 96);
+    assert.ok(r.ogg && r.ogg.length > 0, 'ogg produced');
+    assert.equal(r.oggEngine, 'webcodecs');
+    const info = inspectOggOpus(new Uint8Array(r.ogg!));
+    assert.ok(info.pages.every((p) => p.crcOk), 'all page CRCs valid');
+    assert.ok(info.pages[0].flags.bos && info.pages[info.pages.length - 1].flags.eos);
+    assert.equal(info.head.channels, 2);
+    assert.equal(info.head.inputSampleRate, r.sampleRate);
+    const renderedSeconds = r.frames / r.sampleRate;
+    assert.ok(Math.abs(info.durationSeconds - renderedSeconds) < 1 / 48000, `ogg duration ${info.durationSeconds} vs rendered ${renderedSeconds}`);
+    // 96 kb/s VBR: allow a wide band but catch gross errors (e.g. mono, silence, wrong bitrate).
+    const kbps = (r.ogg!.length * 8) / renderedSeconds / 1000;
+    assert.ok(kbps > 50 && kbps < 160, `effective bitrate ${kbps.toFixed(0)} kb/s`);
+    console.log(`    ogg: ${r.ogg!.length} bytes, ${info.audioPackets} packets, ${info.durationSeconds.toFixed(4)} s, ~${kbps.toFixed(0)} kb/s`);
   });
 
   test('golden file: chamber-only matches the committed reference', async (t) => {

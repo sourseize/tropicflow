@@ -11,7 +11,8 @@ declare global {
     tropicflow: {
       presets: string[];
       presetConfig(name: string): RenderConfig;
-      render(config: RenderConfig, bitDepth?: WavBitDepth): Promise<HarnessRenderResult>;
+      render(config: RenderConfig, bitDepth?: WavBitDepth, oggKbps?: number): Promise<HarnessRenderResult>;
+      capabilities(): { secureContext: boolean; audioWorklet: boolean; opusEngine: 'webcodecs' | 'mediarecorder' | null };
     };
   }
 }

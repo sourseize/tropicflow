@@ -4,14 +4,18 @@ A local-first spatial sound synthesis and modular computing workstation built wi
 
 ## Features
 
+> **User guide with screenshots: [docs/USER_GUIDE.html](docs/USER_GUIDE.html)** (also served at `/docs/USER_GUIDE.html` by `npm start` and `npm run dev`; the GUIDE button in the header opens it).
+
 - **Eurorack Modular Canvas**: Draggable hardware synthesizer modules with sagging patch cables. Cables are functional: audio cables route signal, trigger cables decide which modules the clock fires. Drag from a jack to another jack to connect, double-click a jack to unplug it.
 - **Web Audio DSP Architecture**: Dedicated single-purpose audio voices including FM Marimba acoustic modeling, analog Percussion engine (Kick, Snare, Hi-Hat), dual-oscillator resonant synth lead/bass, and tape delay with damped feedback.
 - **Sample-Accurate Lookahead Clock**: Every note is scheduled on the Web Audio timeline at its exact step time (no timer jitter), with micro-timing swing.
 - **16-Step Polyrhythmic Groove Matrix**: Playhead synchronised to the moment each step actually sounds, with per-step auditioning.
 - **Live Soundboard & Keys**: Tactile keyboard playable via click or computer keys (`A`-`K`).
 - **Dual Real-Time Visualizer**: Phosphor CRT Oscilloscope and 64-band FFT Spectrum Analyzer.
-- **Gravity Chamber / Collision Beat Drop**: a deterministic 2-D physics box patched into the modular canvas. Balls fall under gravity and every collision triggers a note through a configurable **Collision Mapper** (surface → instrument, scale, root, velocity curve). Drop balls by hand (now or on the next bar), automatically every Nth bar, or by clicking in the chamber; draw pegs and ramps with the mouse and set their notes with the wheel. Tempo-independent physics with an optional QUANTIZE knob that snaps hits toward the 16th grid; export/import chambers as JSON. **User guide: [docs/GRAVITY_CHAMBER.md](docs/GRAVITY_CHAMBER.md).**
-- **Deterministic Offline Bounce**: `BOUNCE WAV` renders the current patch (sequencer *and* chamber, from its current ball state) faster than realtime to a 32-bit float WAV, plus a JSON *score* of every scheduled note so the file can be verified by software (see [Testing](#testing-without-listening)).
+- **Gravity Chamber / Collision Beat Drop**: a deterministic 2-D physics box patched into the modular canvas. Balls fall under gravity and every collision triggers a note through a configurable **Collision Mapper** (surface → instrument, scale, root, velocity curve). Drop balls by hand (now or on the next bar), automatically every Nth bar, or by clicking in the chamber; draw pegs and ramps with the mouse and set their notes with the wheel. Tempo-independent physics with an optional QUANTIZE knob that snaps hits toward the 16th grid; export/import chambers as JSON. **User guide: [docs/USER_GUIDE.html → Gravity chamber](docs/USER_GUIDE.html#chamber).**
+- **Live Take Recording**: tick **REC** next to START GROOVE and everything you hear while the groove runs (sequencer, chamber hits, keyboard, knob tweaks) is captured sample-accurately through an AudioWorklet tap on the master bus. The **MAX** slider (1-10 min, default 1) stops a take by itself. **User guide: [Recording & export](#recording--export).**
+- **Export dialog**: WAV (16 / 24 / 32-bit float, lossless) or **OGG (Opus)** at 64-256 kb/s, with start / duration sliders, size estimate and an encode progress bar. Opus is encoded by the browser's WebCodecs `AudioEncoder` (or, where that is missing, by `MediaRecorder` in realtime) and muxed into Ogg by a pure-TypeScript muxer: no extra dependencies, still 100 % offline.
+- **Deterministic Offline Bounce**: `BOUNCE` renders the current patch (sequencer *and* chamber, from its current ball state) faster than realtime, opens the same export dialog, and keeps a JSON *score* of every scheduled note so the file can be verified by software (see [Testing](#testing-without-listening)).
 
 ## Tech Stack & Architecture
 
@@ -28,6 +32,8 @@ src/core/audio      voices, clock, engine, patch application   (no DOM, context 
 src/core/graph      module/port model + pure patch resolution  (PatchRouter)
 src/core/physics    PhysicsChamber (simulation), CollisionMapper (hit -> note), ChamberEngine (scheduling)
 src/core/render     OfflineRenderer, RenderConfig, WAV codec, presets
+src/core/record     TakeRecorder: AudioWorklet tap on the master output (live takes)
+src/core/export     Ogg/Opus muxer (pure), WebCodecs Opus encoder, range/fade/file-name helpers
 src/core/analysis   onset/band/buffer analysis used by tests and CLI
 src/harness         browser entry for headless rendering
 scripts/            render-wav, compare-wav CLIs
@@ -55,9 +61,35 @@ Two renders of the same config are equivalent to within floating-point summation
 - Which instruments the chamber may play is decided by cables from its `HIT TRIG` jack, exactly like the clock's `TRIG OUT`.
 - The same simulation runs in Node and in the browser; `tests/e2e/render.test.ts` asserts the browser's collision times equal an independent Node simulation of the same config.
 
+### Recording & export
+
+**Recording** happens while the transport runs *and* the REC box is ticked: tick REC then START GROOVE (or tick it mid-groove to start right away); STOP ENGINE, unticking REC, or reaching the MAX length finalises the take. Notes played on the keyboard while the engine is stopped are not recorded. A new take replaces the previous one; the header shows the take length next to an **EXPORT** button.
+
+What is captured is exactly what reaches the speakers: post-compressor, post-MASTER volume, stereo at the context's sample rate, as 32-bit floats in memory (about 23 MB per minute at 48 kHz, hence the 10-minute ceiling).
+
+**Export** (from a take or from BOUNCE):
+
+| Parameter | Values |
+|---|---|
+| Format | `WAV` lossless (16 / 24-bit PCM or 32-bit float) or `OGG` (Opus, VBR) |
+| Start / Duration | sliders in 0.1 s steps (same controls as TEMPO / MASTER); clamped to the source, an end within 50 ms of the source end means "to the end" |
+| Bitrate (OGG) | 64, 96, 128 (default), 160, 192, 256 kb/s |
+| Edges | 5 ms linear fade-in/out at the cut points, so slices never click |
+
+File names encode the settings, e.g. `tropicflow-take-120bpm-20250101-1432-2.5s-8s-96k.ogg` or `tropicflow-120bpm-2bars.wav` (a full-range 32-bit float bounce keeps the plain name, as before).
+
+Implementation notes:
+
+- `TakeRecorder` loads its `AudioWorkletProcessor` from an inline Blob URL (no bundler configuration). The worklet batches 4096-frame blocks to the main thread; the recorder assembles the take on stop and enforces the length limit.
+- Each take carries `startContextTime`: a `ConstantSourceNode` scheduled at a known context time feeds the worklet's *second* input, and the frame where it rises pins the take to the Web Audio timeline sample-exactly (the worklet's own `currentFrame` turned out not to share the context's origin in Chromium). A note scheduled at `t` is therefore at `t - startContextTime + busLatency` in the take, which `tests/e2e/ui.test.ts` verifies with `verifyScore` (mean error < 1 ms).
+- Opus needs 48 kHz, so the slice is resampled with an `OfflineAudioContext` first; the encoder's reported pre-skip (312 samples) goes into `OpusHead`, and the last Ogg page's granule position is `preSkip + length` so decoders trim the padded final frame: `ffmpeg` decodes exactly the requested duration. The muxer and its reader are pure TypeScript (`src/core/export/OggOpus.ts`) and unit-tested in Node (CRC against a bitwise reference, lacing, granules, EOS).
+- **Without WebCodecs** (Firefox < 130, Safari, or the app opened over plain `http://<ip>` where browsers hide WebCodecs) the OGG option still works through `MediaRecorder`, in realtime. MediaRecorder's start/stop are not sample-accurate (Chromium loses ~100 ms around a clip), so the slice is played inside a programme `[lead silence][sync burst][gap][slice][tail]`; the recording is decoded to locate the burst, then Ogg's pre-skip hides the lead-in and the granule position trims the tail. Chromium writes WebM, which a minimal EBML reader (`WebmOpus.ts`) unpacks; Firefox writes Ogg directly. Measured against the raw take: correlation > 0.99, lag < 0.1 ms (`tests/e2e/ui.test.ts`).
+- **Recording requires AudioWorklet**, i.e. a secure context (`http://localhost` or `https://`). Over `http://<ip>` the REC box is disabled and says so. There is deliberately no `ScriptProcessorNode` fallback: measured in Chromium, it drops or repeats whole 128-frame render quanta when the main thread is busy, so its takes would be quietly wrong.
+
 ### Known signal-path facts (measured)
 
-- The master bus `DynamicsCompressorNode` adds a **6 ms lookahead latency** (Blink/Gecko/WebKit). A note scheduled at `t` becomes audible at `t + 6 ms`. The offline renderer measures this (`busLatency`) and records both `time` and `audibleTime` in the score.
+- The master bus `DynamicsCompressorNode` adds a **6 ms lookahead latency** (Blink/Gecko/WebKit). A note scheduled at `t` becomes audible at `t + 6 ms`. The offline renderer measures this (`busLatency`) and records both `time` and `audibleTime` in the score. Live takes contain the same 6 ms offset.
+- `AudioWorkletGlobalScope.currentFrame` in Chromium starts counting when the worklet thread begins rendering, not at context creation; do not use it to align captured audio with `AudioContext.currentTime` (see [Recording & export](#recording--export) for the marker-based alternative).
 - CV jacks (pitch / cutoff / time CV) are accepted by the patch system but have no audio effect yet.
 
 ## Getting Started
@@ -127,8 +159,9 @@ The audio output is verified numerically, never by ear.
 | Layer | Command | What it proves | Runtime |
 |---|---|---|---|
 | Unit | `npm run test:unit` | clock math (step/swing timing, grid quantization), patch resolution rules, WAV codec round-trips, analysis functions on synthetic signals, seeded PRNG, physics (analytic free-fall/bounce series, energy, no tunnelling, pegs/ramps/ball-ball, resting/sleep, determinism), collision mapping, chamber scheduling (queued drops, auto-drop per bar, quantize, snapshots, config round-trip) | ~1 s |
-| Render E2E | `npm run test:e2e` | see below | ~10 s |
-| UI E2E | `npm run test:e2e:ui` | real clicks in the built app: start/stop, unplug/plug cables by mouse, bounce + score download verifies, chamber DROP/CLEAR, canvas interactions (drop, pegs, ramps, wheel notes), mapper panel, bar-synced drops, export/import | ~20 s |
+| Unit (export) | `npm run test:unit` | Ogg page writer/reader (CRC vs a bitwise reference, lacing, granules from Opus TOC, continued packets, EOS), OpusHead/OpusTags, WebM/EBML demuxing (sized and unknown-size elements), range clamping / end snapping / edge fades / file names | part of the above |
+| Render E2E | `npm run test:e2e` | see below; also: the harness runs in a secure context and encodes a render to Ogg Opus of exactly the rendered length | ~10 s |
+| UI E2E | `npm run test:e2e:ui` | real clicks in the built app: start/stop, unplug/plug cables by mouse, bounce → export dialog → WAV + score download verifies, chamber DROP/CLEAR, canvas interactions (drop, pegs, ramps, wheel notes), mapper panel, bar-synced drops, export/import; **recording**: REC + START records a take whose notes verify against the live schedule (mean error < 1 ms), OGG export of a sub-range is valid Ogg Opus of the requested length and decodes in the browser, the MAX slider stops a take by itself, the MediaRecorder fallback (WebCodecs removed) is sample-aligned with the take (correlation > 0.99, lag < 2 ms), ABORT stops a running encode without a download, and without AudioWorklet REC is disabled with an explanation | ~60 s |
 
 `tests/e2e/render.test.ts` renders with the real engine inside headless Chromium and checks:
 
@@ -143,9 +176,13 @@ The audio output is verified numerically, never by ear.
 
 ### Comparing WAV files yourself
 
+Ogg exports can be validated without ffmpeg: `npm run inspect:ogg -- file.ogg [--expect-seconds N] [--json]` checks capture patterns, every page CRC, BOS/EOS, OpusHead/OpusTags, granule monotonicity and the implied duration (exit code 1 on any problem). `npm run render:wav -- --ogg 128 ...` also writes an `.ogg` next to the WAV, encoded by the browser's WebCodecs encoder (the render harness is served from `http://localhost` so it is a secure context). `npm run docs:shots` regenerates the user-guide screenshots from the production build.
+
 ```bash
 # Render a preset (or --config my.json) to WAV + score, optionally the pre-compressor tap
 npm run render:wav -- --preset default-groove --bars 2 --out out/groove.wav --tap out/groove.tap.wav
+npm run render:wav -- --preset default-groove --bars 2 --ogg 128 --out out/groove.wav   # + out/groove.ogg
+npm run inspect:ogg -- out/groove.ogg
 npm run render:wav -- --list-presets
 
 # Render one instrument, dry, for sample-accurate checks
@@ -159,7 +196,7 @@ npm run compare:wav -- out/ck.tap.wav --score out/ck.score.json --signal tap --s
 # A vs B: bit-exact flag, max diff, SNR, correlation/lag, windowed level diff, onset agreement
 npm run compare:wav -- out/groove.wav tests/golden/default-groove-1bar.wav
 
-# WAV vs its score (the bounce from the UI works too: BOUNCE WAV then SCORE)
+# WAV vs its score (the bounce from the UI works too: BOUNCE, EXPORT WAV, then SCORE)
 npm run compare:wav -- out/groove.wav --score out/groove.score.json                       # approximate, in-mix
 npm run compare:wav -- out/hat.tap.wav --score out/hat.score.json --signal tap --stem hihat   # exact
 

@@ -14,6 +14,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { launchChromium } from '../../scripts/lib/launchBrowser.mjs';
 import { decodeWav } from '../../src/core/render/WavCodec.ts';
 import { verifyScore } from '../../src/core/analysis/AudioAnalysis.ts';
+import { inspectOggOpus } from '../../src/core/export/OggOpus.ts';
 import type { ScoreEvent } from '../../src/core/render/RenderConfig.ts';
 /// <reference path=\"../../src/types/window.d.ts\" />
 
@@ -102,9 +103,13 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
     assert.deepEqual(await patchIds(), before);
   });
 
-  test('BOUNCE WAV downloads a WAV whose notes verify against the SCORE download', async () => {
-    const [wavDownload] = await Promise.all([page.waitForEvent('download'), page.click('text=BOUNCE WAV')]);
+  test('BOUNCE opens the export dialog; the WAV it saves verifies against the SCORE download', async () => {
+    await page.click('[data-testid="bounce"]');
+    await page.waitForSelector('[data-testid="export-modal"]');
+    assert.match(await page.textContent('[data-testid="export-modal"]') ?? '', /BOUNCE 2 BARS/);
+    const [wavDownload] = await Promise.all([page.waitForEvent('download'), page.click('[data-testid="export-run"]')]);
     assert.match(wavDownload.suggestedFilename(), /^tropicflow-\d+bpm-2bars\.wav$/);
+    await page.waitForSelector('[data-testid="export-modal"]', { state: 'detached' });
     const wavBuf = fs.readFileSync((await wavDownload.path())!);
     const [scoreDownload] = await Promise.all([page.waitForEvent('download'), page.click('text=SCORE')]);
     const scoreFile = JSON.parse(fs.readFileSync((await scoreDownload.path())!, 'utf8')) as { score: ScoreEvent[] };
@@ -267,6 +272,264 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
     await page.setInputFiles('[data-testid="chamber-import-input"]', file);
     await page.waitForFunction((n) => window.tropicflowEngine.chamber.physics.getPegs().length === n, pegsBefore.length);
     assert.deepEqual(await page.evaluate(() => window.tropicflowEngine.chamber.physics.getPegs().map((p) => p.id)), pegsBefore);
+  });
+
+  // -------------------------------------------------------------------------
+  // Live recording (REC checkbox) + export dialog
+  // -------------------------------------------------------------------------
+
+  type Captured = { time: number; track: string; frequency?: number; velocity: number; source: ScoreEvent['source'] };
+  const takeInfo = () =>
+    page.evaluate(() => {
+      const t = window.tropicflowEngine.getLastTake();
+      return t && { durationSeconds: t.durationSeconds, sampleRate: t.sampleRate, channels: t.channels.length, startContextTime: t.startContextTime, syncExact: t.syncExact, bpm: t.bpm };
+    });
+
+  test('REC + START records what you hear; STOP finalises a take whose notes verify against what was scheduled', async () => {
+    await page.click('text=STOP ENGINE');
+    await page.waitForTimeout(1500); // let the tape delay tail of the previous groove die out
+    await page.evaluate(() => {
+      (window as unknown as { __takeNotes: unknown[] }).__takeNotes = [];
+      window.tropicflowEngine.subscribeNotes((n) =>
+        (window as unknown as { __takeNotes: unknown[] }).__takeNotes.push({ time: n.time, track: n.track, frequency: n.frequency, velocity: n.velocity, source: n.source })
+      );
+    });
+    assert.match((await page.textContent('[data-testid="rec-status"]')) ?? '', /NO TAKE/);
+    await page.check('[data-testid="rec-arm"]');
+    assert.equal(await page.evaluate(() => window.tropicflowEngine.isRecordArmed()), true);
+    assert.match((await page.textContent('[data-testid="rec-status"]')) ?? '', /ARMED/);
+
+    await page.click('text=START GROOVE');
+    await page.waitForFunction(() => window.tropicflowEngine.recorder.isRecording());
+    await page.waitForFunction(() => window.tropicflowEngine.recorder.getElapsedSeconds() > 2.5);
+    assert.match((await page.textContent('[data-testid="rec-status"]')) ?? '', /00:0\d\s*\/ 01:00/);
+    await page.click('text=STOP ENGINE');
+    await page.waitForFunction(() => window.tropicflowEngine.getLastTake() !== null && !window.tropicflowEngine.recorder.isRecording());
+
+    const take = (await takeInfo())!;
+    assert.equal(take.channels, 2);
+    assert.equal(take.syncExact, true, 'take origin measured from the sync marker');
+    assert.ok(take.durationSeconds > 2 && take.durationSeconds < 10, `take length ${take.durationSeconds}`);
+    assert.match((await page.textContent('[data-testid="rec-status"]')) ?? '', /TAKE 00:0\d/);
+
+    // Export the whole take as 24-bit WAV through the dialog.
+    await page.click('[data-testid="export-open"]');
+    await page.waitForSelector('[data-testid="export-modal"]');
+    assert.match((await page.textContent('[data-testid="export-modal"]')) ?? '', /LIVE TAKE/);
+    await page.selectOption('[data-testid="export-bitdepth"]', '24');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-testid="export-run"]')]);
+    assert.match(dl.suggestedFilename(), /^tropicflow-take-\d+bpm-\d{8}-\d{4}-24bit\.wav$/);
+    const wav = decodeWav(fs.readFileSync((await dl.path())!));
+    assert.equal(wav.bitDepth, 24);
+    assert.equal(wav.channels.length, 2);
+    assert.equal(wav.channels[0].length, Math.round(take.durationSeconds * take.sampleRate));
+
+    // The recording is sample-accurate: every note scheduled while it ran sits at
+    // (scheduled time - take start + 6 ms compressor lookahead) in the file.
+    const notes = await page.evaluate(() => (window as unknown as { __takeNotes: Captured[] }).__takeNotes);
+    const busLatency = 0.006;
+    const score: ScoreEvent[] = notes
+      .map((n) => ({ ...n, time: n.time - take.startContextTime, audibleTime: n.time - take.startContextTime + busLatency }))
+      // Skip the first 150 ms: the onset detector needs pre-roll before a hit.
+      .filter((e) => e.audibleTime > 0.15 && e.audibleTime < take.durationSeconds - 0.1);
+    assert.ok(score.length >= 16, `only ${score.length} notes fell inside the take`);
+    const v = verifyScore(wav.channels, wav.sampleRate, score, { signal: 'master' });
+    console.log(`    take: ${score.length} notes in ${take.durationSeconds.toFixed(2)} s, timing error mean ${v.meanAbsErrorMs.toFixed(2)} / max ${v.maxAbsErrorMs.toFixed(2)} ms`);
+    // A live take starts mid-pattern with tails ringing, so a band-level check may occasionally
+    // miss a repeated note; alignment is what matters here (mean error well under a render quantum).
+    assert.ok(v.failures.length <= 2, v.failures.map((f) => `${f.event.track}@${f.event.audibleTime.toFixed(3)}: ${f.reason}`).join('\n'));
+    assert.ok(v.maxAbsErrorMs < 6, `max timing error ${v.maxAbsErrorMs.toFixed(2)} ms`);
+    assert.ok(v.meanAbsErrorMs < 2, `mean timing error ${v.meanAbsErrorMs.toFixed(2)} ms`);
+  });
+
+  test('export dialog: a sub-range as OGG is a valid Ogg Opus file of the requested length', async () => {
+    await page.click('[data-testid="export-open"]');
+    await page.waitForSelector('[data-testid="export-modal"]');
+    await page.click('[data-testid="format-ogg"]');
+    await page.fill('[data-testid="export-start"]', '0.5');
+    await page.fill('[data-testid="export-duration"]', '1');
+    await page.selectOption('[data-testid="export-bitrate"]', '96');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-testid="export-run"]')]);
+    assert.match(dl.suggestedFilename(), /^tropicflow-take-\d+bpm-\d{8}-\d{4}-0\.5s-1s-96k\.ogg$/);
+    const bytes = new Uint8Array(fs.readFileSync((await dl.path())!));
+
+    const info = inspectOggOpus(bytes);
+    assert.ok(info.pages.every((p) => p.crcOk), 'all page CRCs valid');
+    assert.ok(info.pages[0].flags.bos && info.pages[info.pages.length - 1].flags.eos);
+    assert.equal(info.head.channels, 2);
+    assert.equal(info.head.inputSampleRate, 44100);
+    assert.ok(info.head.preSkip > 0);
+    assert.equal(info.audioPackets, 51); // 50 x 20 ms + the encoder's flush packet
+    assert.ok(Math.abs(info.durationSeconds - 1) < 1e-6, `granule duration ${info.durationSeconds}`);
+    // ~96 kb/s: 12 KB/s +- codec variance
+    assert.ok(bytes.length > 7_000 && bytes.length < 20_000, `size ${bytes.length}`);
+
+    // The browser's own demuxer/decoder must accept it too, and hear the trimmed length.
+    const decoded = await page.evaluate(async (b64) => {
+      const bin = atob(b64);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const ctx = new OfflineAudioContext(2, 48000, 48000);
+      const audio = await ctx.decodeAudioData(buf.buffer);
+      const ch = audio.getChannelData(0);
+      let peak = 0;
+      for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]));
+      return { duration: audio.duration, channels: audio.numberOfChannels, peak };
+    }, Buffer.from(bytes).toString('base64'));
+    assert.equal(decoded.channels, 2);
+    assert.ok(Math.abs(decoded.duration - 1) < 0.002, `decoded duration ${decoded.duration}`);
+    assert.ok(decoded.peak > 0.05, 'decoded audio is not silent');
+    await page.waitForSelector('[data-testid="export-modal"]', { state: 'detached' });
+  });
+
+  test('the MAX slider limits a take: recording stops by itself while the groove keeps playing', async () => {
+    // The MAX slider (1-10 min) drives the recorder's limit.
+    await page.fill('[data-testid="rec-max"]', '3');
+    assert.equal(await page.evaluate(() => window.tropicflowEngine.recorder.getMaxSeconds()), 180);
+    assert.match((await page.textContent('[data-testid="record-controls"]')) ?? '', /3 MIN/);
+
+    // Use the API for a limit short enough to test.
+    await page.evaluate(() => window.tropicflowEngine.recorder.setMaxSeconds(1.5));
+    await page.click('text=START GROOVE');
+    await page.waitForFunction(() => window.tropicflowEngine.recorder.isRecording());
+    await page.waitForFunction(() => !window.tropicflowEngine.recorder.isRecording(), undefined, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.tropicflowEngine.clock.getIsPlaying()), true, 'groove keeps playing');
+    const take = (await takeInfo())!;
+    assert.ok(Math.abs(take.durationSeconds - 1.5) < 0.1, `take ${take.durationSeconds}s`);
+    assert.match((await page.textContent('[data-testid="rec-status"]')) ?? '', /max length reached/);
+
+    // Unticking REC while playing with the limit restored starts nothing; ticking starts a new take immediately.
+    await page.evaluate(() => window.tropicflowEngine.recorder.setMaxSeconds(60));
+    await page.uncheck('[data-testid="rec-arm"]');
+    assert.equal(await page.evaluate(() => window.tropicflowEngine.recorder.isRecording()), false);
+    await page.check('[data-testid="rec-arm"]');
+    await page.waitForFunction(() => window.tropicflowEngine.recorder.isRecording());
+    await page.waitForTimeout(400);
+    await page.uncheck('[data-testid="rec-arm"]');
+    // The take is stored once the worklet has flushed, shortly after isRecording() turns false.
+    await page.waitForFunction(() => !window.tropicflowEngine.recorder.isRecording() && window.tropicflowEngine.getLastTake()!.durationSeconds < 1.4);
+    const second = (await takeInfo())!;
+    assert.ok(second.durationSeconds > 0.3 && second.durationSeconds < 1.4, `second take ${second.durationSeconds}s replaced the first`);
+  });
+
+  test('OGG fallback without WebCodecs (MediaRecorder, realtime) is valid and sample-aligned with the take', async () => {
+    // A fresh take of 2+ s (the groove is still playing).
+    await page.check('[data-testid="rec-arm"]');
+    await page.waitForFunction(() => window.tropicflowEngine.recorder.getElapsedSeconds() > 2);
+    await page.uncheck('[data-testid="rec-arm"]');
+    await page.waitForFunction(() => !window.tropicflowEngine.recorder.isRecording() && window.tropicflowEngine.getLastTake()!.durationSeconds > 1.9);
+    await page.evaluate(() => {
+      (window as unknown as { __AudioEncoder: unknown }).__AudioEncoder = (window as unknown as { AudioEncoder: unknown }).AudioEncoder;
+      (window as unknown as { AudioEncoder: unknown }).AudioEncoder = undefined;
+    });
+    await page.click('[data-testid="export-open"]');
+    await page.waitForSelector('[data-testid="export-modal"]');
+    await page.click('[data-testid="format-ogg"]');
+    assert.match((await page.textContent('[data-testid="format-ogg"]')) ?? '', /realtime/);
+    await page.fill('[data-testid="export-start"]', '0.3');
+    await page.fill('[data-testid="export-duration"]', '0.8');
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), page.click('[data-testid="export-run"]')]);
+    assert.match(dl.suggestedFilename(), /-0\.3s-0\.8s-\d+k\.ogg$/);
+    const bytes = new Uint8Array(fs.readFileSync((await dl.path())!));
+    const info = inspectOggOpus(bytes);
+    assert.ok(info.pages.every((p) => p.crcOk));
+    assert.ok(Math.abs(info.durationSeconds - 0.8) < 1e-6, `granule duration ${info.durationSeconds}`);
+    assert.ok(info.head.preSkip > 312 && info.head.preSkip <= 65535, `pre-skip ${info.head.preSkip} hides the sync lead-in`);
+    await page.waitForSelector('[data-testid="export-modal"]', { state: 'detached' });
+
+    // Decode in the browser at the take's rate and cross-correlate with the raw take slice.
+    const aligned = await page.evaluate(
+      async ({ b64, start, duration }) => {
+        const bin = atob(b64);
+        const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        const take = window.tropicflowEngine.getLastTake()!;
+        const sr = take.sampleRate;
+        const audio = await new OfflineAudioContext(2, 1, sr).decodeAudioData(buf.buffer);
+        const dec = audio.getChannelData(0);
+        const ref = take.channels[0].subarray(Math.round(start * sr), Math.round((start + duration) * sr));
+        const maxLag = Math.round(0.02 * sr);
+        let best = -Infinity;
+        let bestLag = 0;
+        let ea = 0;
+        let eb = 0;
+        for (let i = 0; i < ref.length; i++) {
+          ea += ref[i] * ref[i];
+          eb += (dec[i] ?? 0) * (dec[i] ?? 0);
+        }
+        for (let lag = -maxLag; lag <= maxLag; lag++) {
+          let acc = 0;
+          for (let i = Math.max(0, -lag); i < Math.min(ref.length, dec.length - lag); i++) acc += ref[i] * dec[i + lag];
+          const c = acc / Math.sqrt(ea * eb);
+          if (c > best) {
+            best = c;
+            bestLag = lag;
+          }
+        }
+        return { decodedSeconds: audio.duration, corr: best, lagMs: (bestLag / sr) * 1000 };
+      },
+      { b64: Buffer.from(bytes).toString('base64'), start: 0.3, duration: 0.8 }
+    );
+    console.log(`    fallback ogg: decoded ${aligned.decodedSeconds.toFixed(3)} s, corr ${aligned.corr.toFixed(3)}, lag ${aligned.lagMs.toFixed(2)} ms`);
+    assert.ok(Math.abs(aligned.decodedSeconds - 0.8) < 0.002);
+    assert.ok(aligned.corr > 0.9, `correlation ${aligned.corr}`);
+    assert.ok(Math.abs(aligned.lagMs) < 2, `lag ${aligned.lagMs} ms`);
+    await page.evaluate(() => {
+      (window as unknown as { AudioEncoder: unknown }).AudioEncoder = (window as unknown as { __AudioEncoder: unknown }).__AudioEncoder;
+    });
+  });
+
+  test('export dialog: ABORT during a realtime encode stops it, Escape closes the dialog when idle', async () => {
+    await page.evaluate(() => {
+      (window as unknown as { __AudioEncoder: unknown }).__AudioEncoder = (window as unknown as { AudioEncoder: unknown }).AudioEncoder;
+      (window as unknown as { AudioEncoder: unknown }).AudioEncoder = undefined;
+    });
+    await page.click('[data-testid="export-open"]');
+    await page.waitForSelector('[data-testid="export-modal"]');
+    await page.click('[data-testid="format-ogg"]');
+    await page.click('[data-testid="export-all"]').catch(() => undefined); // already whole take -> no button
+    await page.click('[data-testid="export-run"]');
+    await page.waitForSelector('[data-testid="export-progress"]');
+    assert.match((await page.textContent('[data-testid="export-cancel"]')) ?? '', /ABORT/);
+    assert.ok(await page.isDisabled('[data-testid="export-run"]'));
+    let downloaded = false;
+    page.once('download', () => {
+      downloaded = true;
+    });
+    await page.click('[data-testid="export-cancel"]');
+    await page.waitForSelector('[data-testid="export-progress"]', { state: 'detached' });
+    assert.match((await page.textContent('[data-testid="export-cancel"]')) ?? '', /CANCEL/);
+    assert.ok(await page.isEnabled('[data-testid="export-run"]'), 'dialog is back to idle');
+    await page.waitForTimeout(1500);
+    assert.equal(downloaded, false, 'an aborted export must not download');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('[data-testid="export-modal"]', { state: 'detached' });
+    await page.evaluate(() => {
+      (window as unknown as { AudioEncoder: unknown }).AudioEncoder = (window as unknown as { __AudioEncoder: unknown }).__AudioEncoder;
+    });
+  });
+
+  test('without AudioWorklet (insecure context) REC is disabled with an explanation instead of recording unreliably', async () => {
+    const port = (server.address() as { port: number }).port;
+    const ctx2 = await browser.newContext({ viewport: { width: 1500, height: 950 } });
+    const p2 = await ctx2.newPage();
+    try {
+      await p2.addInitScript(() => {
+        Object.defineProperty(BaseAudioContext.prototype, 'audioWorklet', { configurable: true, get: () => undefined });
+        (window as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = undefined;
+      });
+      await p2.goto(`http://localhost:${port}/`);
+      await p2.waitForFunction(() => typeof window.tropicflowEngine !== 'undefined');
+      assert.ok(await p2.isDisabled('[data-testid="rec-arm"]'));
+      assert.match((await p2.textContent('[data-testid="rec-status"]')) ?? '', /NO AUDIOWORKLET/);
+      assert.match((await p2.getAttribute('[data-testid="record-controls"] label', 'title')) ?? '', /AudioWorklet/);
+      // The export dialog (bounce) keeps working regardless.
+      await p2.click('[data-testid="bounce"]');
+      await p2.waitForSelector('[data-testid="export-modal"]');
+      assert.ok(await p2.isEnabled('[data-testid="format-ogg"]'));
+    } finally {
+      await ctx2.close();
+    }
   });
 
   test('stopping the engine resets the clock; no page errors occurred', async () => {

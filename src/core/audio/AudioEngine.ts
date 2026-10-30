@@ -13,6 +13,7 @@ import { resolvePatch } from '../graph/PatchRouter.ts';
 import { type ChamberConfig, ChamberEngine, type ChamberNote } from '../physics/ChamberEngine.ts';
 import type { NoteCommand } from '../physics/CollisionMapper.ts';
 import type { CollisionEvent } from '../physics/ChamberTypes.ts';
+import { type Take, TakeRecorder, type TakeStopReason } from '../record/TakeRecorder.ts';
 
 export type TrackId = 'kick' | 'snare' | 'hihat' | 'marimba' | 'synth';
 export type Pattern = Record<TrackId, boolean[]>;
@@ -96,6 +97,8 @@ export class AudioEngine {
   public readonly drums: PercussionEngine;
   public readonly clock: AudioClock;
   public readonly chamber: ChamberEngine;
+  /** Taps the master output to record what you hear (see core/record). */
+  public readonly recorder: TakeRecorder;
   private readonly eventBus: EventBus;
   private readonly publishEvents: boolean;
 
@@ -109,6 +112,10 @@ export class AudioEngine {
 
   private readonly stepListeners: Set<StepListener> = new Set();
   private readonly noteListeners: Set<NoteListener> = new Set();
+
+  /** REC checkbox: record whenever the transport runs. */
+  private recordArmed = false;
+  private lastTake: Take | null = null;
 
   private readonly outputPorts: Map<string, AudioNode>;
   private readonly inputPorts: Map<string, AudioNode>;
@@ -132,6 +139,10 @@ export class AudioEngine {
       onChanged: () => {
         if (this.publishEvents) this.eventBus.publish({ type: 'CHAMBER_CHANGED', timestamp: performance.now() });
       },
+    });
+
+    this.recorder = new TakeRecorder(this.ctx, this.masterBus.outputNode, {
+      onMaxLengthReached: (take) => this.storeTake(take, 'max-length'),
     });
 
     this.outputPorts = new Map<string, AudioNode>([
@@ -346,6 +357,8 @@ export class AudioEngine {
 
   public async startAudio(): Promise<void> {
     await this.resume();
+    // Connect the tap before the first step is scheduled so nothing is missed.
+    if (this.recordArmed) await this.startTake();
     this.clock.start();
     this.chamber.start(this.clock.getStartTime());
     if (this.publishEvents) {
@@ -356,8 +369,68 @@ export class AudioEngine {
   public stopAudio(): void {
     this.clock.stop();
     this.chamber.stop();
+    if (this.recorder.isRecording()) void this.stopTake('stopped');
     if (this.publishEvents) {
       this.eventBus.publish({ type: 'AUDIO_STOPPED', timestamp: performance.now() });
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Take recording: runs while the transport plays AND the REC box is ticked
+  // -------------------------------------------------------------------
+
+  public isRecordArmed(): boolean {
+    return this.recordArmed;
+  }
+
+  /**
+   * Tick/untick REC. Ticking while playing starts recording immediately;
+   * unticking while recording finalises the take.
+   */
+  public async setRecordArmed(armed: boolean): Promise<void> {
+    if (this.recordArmed === armed) return;
+    this.recordArmed = armed;
+    if (armed && this.clock.getIsPlaying() && !this.recorder.isRecording()) {
+      await this.startTake();
+    } else if (!armed && this.recorder.isRecording()) {
+      await this.stopTake('stopped');
+    }
+  }
+
+  /** The most recent finished take (a new recording replaces it). */
+  public getLastTake(): Take | null {
+    return this.lastTake;
+  }
+
+  public clearLastTake(): void {
+    this.lastTake = null;
+  }
+
+  private async startTake(): Promise<void> {
+    try {
+      await this.recorder.start(this.clock.getBpm());
+      if (this.publishEvents) {
+        this.eventBus.publish({ type: 'TAKE_STARTED', timestamp: performance.now(), durationSeconds: 0 });
+      }
+    } catch (err) {
+      console.error('[AudioEngine] could not start recording', err);
+    }
+  }
+
+  private async stopTake(reason: TakeStopReason): Promise<void> {
+    const take = await this.recorder.stop();
+    this.storeTake(take, reason);
+  }
+
+  private storeTake(take: Take | null, reason: TakeStopReason): void {
+    if (take) this.lastTake = take;
+    if (this.publishEvents) {
+      this.eventBus.publish({
+        type: 'TAKE_STOPPED',
+        timestamp: performance.now(),
+        durationSeconds: take?.durationSeconds ?? 0,
+        reason: take ? reason : 'empty',
+      });
     }
   }
 

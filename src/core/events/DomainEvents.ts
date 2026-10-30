@@ -14,6 +14,8 @@ export type DomainEventType =
   | 'CABLE_DISCONNECTED'
   | 'RECORDING_STARTED'
   | 'RECORDING_STOPPED'
+  | 'TAKE_STARTED'
+  | 'TAKE_STOPPED'
   | 'CHAMBER_COLLISION'
   | 'CHAMBER_CHANGED';
 
@@ -64,6 +66,15 @@ export interface RecordingEvent extends BaseDomainEvent {
   sampleRate: number;
 }
 
+/** Live take recording (what you hear) started / stopped. */
+export interface TakeEvent extends BaseDomainEvent {
+  type: 'TAKE_STARTED' | 'TAKE_STOPPED';
+  /** Length of the finished take in seconds (0 for TAKE_STARTED). */
+  durationSeconds: number;
+  /** Why the take stopped: user/transport stop, max length reached, or nothing was captured. */
+  reason?: 'stopped' | 'max-length' | 'empty';
+}
+
 export interface ParamChangedEvent extends BaseDomainEvent {
   type: 'PARAM_CHANGED';
   nodeId: string;
@@ -92,6 +103,7 @@ export type DomainEvent =
   | NoteOffEvent
   | StepTriggeredEvent
   | RecordingEvent
+  | TakeEvent
   | ChamberCollisionEvent
   | ParamChangedEvent
   | CableConnectedEvent

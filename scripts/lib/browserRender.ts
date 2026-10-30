@@ -7,6 +7,7 @@ import { build } from 'vite';
 import { chromium, type Browser, type Page } from 'playwright';
 import { launchChromium } from './launchBrowser.mjs';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { RenderConfig, ScoreEvent } from '../../src/core/render/RenderConfig.ts';
@@ -27,6 +28,15 @@ export interface BrowserRenderResult {
   frames: number;
   patternEnd: number;
   busLatency: number;
+  /** Ogg Opus of the master output when `oggKbps` was given. */
+  ogg?: Buffer;
+  oggEngine?: string;
+}
+
+export interface HarnessCapabilities {
+  secureContext: boolean;
+  audioWorklet: boolean;
+  opusEngine: 'webcodecs' | 'mediarecorder' | null;
 }
 
 /** Bundle the harness (cached until any source file is newer than the bundle). */
@@ -63,25 +73,47 @@ function newestMtime(dir: string): number {
   return newest;
 }
 
+/**
+ * The harness page is served from http://localhost so it is a *secure
+ * context*: WebCodecs (Opus export) and AudioWorklet are hidden on about:blank.
+ */
+function serveBlankPage(): Promise<http.Server> {
+  return new Promise((resolve) => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
+    });
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
+}
+
 export class BrowserRenderer {
   private readonly browser: Browser;
   private readonly page: Page;
+  private readonly server: http.Server;
 
-  private constructor(browser: Browser, page: Page) {
+  private constructor(browser: Browser, page: Page, server: http.Server) {
     this.browser = browser;
     this.page = page;
+    this.server = server;
   }
 
   public static async create(): Promise<BrowserRenderer> {
     const bundlePath = await buildHarness();
     const { browser, label } = await launchChromium(chromium);
     if (process.env.TROPICFLOW_VERBOSE) console.log(`[harness] using ${label}`);
+    const server = await serveBlankPage();
+    const port = (server.address() as { port: number }).port;
     const page = await browser.newPage();
     page.on('pageerror', (err) => console.error('[harness pageerror]', err.message));
-    await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
+    await page.goto(`http://localhost:${port}/`);
     await page.addScriptTag({ content: fs.readFileSync(bundlePath, 'utf8') });
     await page.waitForFunction(() => typeof window.tropicflow !== 'undefined');
-    return new BrowserRenderer(browser, page);
+    return new BrowserRenderer(browser, page, server);
+  }
+
+  public async capabilities(): Promise<HarnessCapabilities> {
+    return this.page.evaluate(() => window.tropicflow.capabilities());
   }
 
   public async presets(): Promise<string[]> {
@@ -92,10 +124,10 @@ export class BrowserRenderer {
     return this.page.evaluate((n) => window.tropicflow.presetConfig(n), name);
   }
 
-  public async render(config: RenderConfig, bitDepth: WavBitDepth = 32): Promise<BrowserRenderResult> {
+  public async render(config: RenderConfig, bitDepth: WavBitDepth = 32, oggKbps?: number): Promise<BrowserRenderResult> {
     const result = await this.page.evaluate(
-      ([cfg, depth]) => window.tropicflow.render(cfg as RenderConfig, depth as WavBitDepth),
-      [config, bitDepth] as const
+      ([cfg, depth, kbps]) => window.tropicflow.render(cfg as RenderConfig, depth as WavBitDepth, kbps as number | undefined),
+      [config, bitDepth, oggKbps] as const
     );
     return {
       wav: Buffer.from(result.wavBase64, 'base64'),
@@ -105,10 +137,13 @@ export class BrowserRenderer {
       frames: result.frames,
       patternEnd: result.patternEnd,
       busLatency: result.busLatency,
+      ogg: result.oggBase64 ? Buffer.from(result.oggBase64, 'base64') : undefined,
+      oggEngine: result.oggEngine,
     };
   }
 
   public async close(): Promise<void> {
     await this.browser.close();
+    await new Promise<void>((resolve) => this.server.close(() => resolve()));
   }
 }

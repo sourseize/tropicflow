@@ -40,10 +40,14 @@ const MIME = {
   '.map': 'application/json',
 };
 
+const DOCS = path.join(ROOT, 'docs');
+
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  let file = path.normalize(path.join(DIST, url));
-  if (!file.startsWith(DIST)) {
+  // The user guide (docs/USER_GUIDE.html + images) is served from the repository at /docs/.
+  const root = url.startsWith('/docs/') ? ROOT : DIST;
+  let file = path.normalize(path.join(root, url));
+  if (!file.startsWith(root) || (root === ROOT && !file.startsWith(DOCS))) {
     res.writeHead(403);
     res.end();
     return;
@@ -58,4 +62,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, host, () => {
   console.log(`TROPICFLOW is running at http://localhost:${port}/  (serving ${path.relative(ROOT, DIST)}; Ctrl+C to stop)`);
+  console.log(`User guide:             http://localhost:${port}/docs/USER_GUIDE.html`);
 });

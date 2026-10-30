@@ -1,20 +1,19 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { AudioEngine } from '../../core/audio/AudioEngine.ts';
 import { EventBus } from '../../core/events/EventBus.ts';
 import { renderOffline } from '../../core/render/OfflineRenderer.ts';
-import { encodeWav } from '../../core/render/WavCodec.ts';
 import { captureRenderConfig } from '../../core/render/captureConfig.ts';
-import { Play, Square, Sliders, Volume2, Cpu, Download } from 'lucide-react';
+import type { ExportSource } from '../../core/export/ExportOptions.ts';
+import { downloadBlob } from '../../core/export/exportAudio.ts';
+import { Play, Square, Sliders, Volume2, Cpu, Download, BookOpen } from 'lucide-react';
+import { RecordControls } from './RecordControls.tsx';
+import { ExportModal } from '../export/ExportModal.tsx';
 
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+/** yyyymmdd-hhmm for take file names. */
+function timeStamp(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
 export const TopBar: React.FC = () => {
@@ -25,10 +24,26 @@ export const TopBar: React.FC = () => {
   const [bounceBars, setBounceBars] = useState<number>(2);
   const [isBouncing, setIsBouncing] = useState<boolean>(false);
   const [lastScore, setLastScore] = useState<{ filename: string; json: string } | null>(null);
+  const [exportSource, setExportSource] = useState<ExportSource | null>(null);
+  const closeExport = useCallback(() => setExportSource(null), []);
+
+  /** Open the export dialog for the last recorded take. */
+  const exportTake = () => {
+    const take = engine.getLastTake();
+    if (!take) return;
+    setExportSource({
+      label: 'LIVE TAKE',
+      channels: take.channels,
+      sampleRate: take.sampleRate,
+      bpm: take.bpm,
+      stem: `tropicflow-take-${take.bpm}bpm-${timeStamp(take.recordedAt)}`,
+    });
+  };
 
   /**
-   * Render the current patch offline (faster than realtime, deterministic)
-   * and download it as a 32-bit float WAV plus the note score as JSON.
+   * Render the current patch offline (faster than realtime, deterministic),
+   * then open the export dialog (WAV or OGG). The note score is kept for the
+   * SCORE button.
    */
   const bounce = async () => {
     if (isBouncing) return;
@@ -38,7 +53,6 @@ export const TopBar: React.FC = () => {
     eventBus.publish({ type: 'RECORDING_STARTED', timestamp: performance.now(), bars: config.bars, sampleRate: config.sampleRate });
     try {
       const result = await renderOffline(config);
-      const wav = encodeWav(result.channels, result.sampleRate, 32);
       const stem = `tropicflow-${config.bpm}bpm-${config.bars}bars`;
       // Browsers block multiple automatic downloads; the score is offered via its own button.
       setLastScore({
@@ -49,7 +63,13 @@ export const TopBar: React.FC = () => {
           2
         ),
       });
-      downloadBlob(new Blob([wav], { type: 'audio/wav' }), `${stem}.wav`);
+      setExportSource({
+        label: `BOUNCE ${config.bars} BAR${config.bars > 1 ? 'S' : ''}`,
+        channels: result.channels,
+        sampleRate: result.sampleRate,
+        bpm: config.bpm,
+        stem,
+      });
     } catch (err) {
       console.error('[TopBar] bounce failed', err);
     } finally {
@@ -91,7 +111,7 @@ export const TopBar: React.FC = () => {
 
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="font-extrabold tracking-tight text-base text-cream-100 flex items-center gap-1.5">
+            <h1 className="font-extrabold tracking-tight text-base text-cream-100 flex items-center gap-1.5 whitespace-nowrap">
               <span>TROPIC</span>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-mango-400 via-papaya-400 to-tomato-400">
                 FLOW
@@ -101,16 +121,16 @@ export const TopBar: React.FC = () => {
               OFFLINE LOCAL
             </span>
           </div>
-          <p className="text-[11px] font-mono text-cream-200/50">
+          <p className="hidden xl:block whitespace-nowrap text-[11px] font-mono text-cream-200/50">
             Modular Audio-Visual Synthesis & Physics Computing
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-3">
         <button
           onClick={togglePlayback}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold font-mono text-xs tracking-wider transition-all duration-200 shadow-lg ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold font-mono text-xs tracking-wider whitespace-nowrap transition-all duration-200 shadow-lg ${
             isPlaying
               ? 'bg-tomato-500 hover:bg-tomato-600 text-white shadow-glow-tomato animate-pulse'
               : 'bg-gradient-to-r from-mango-500 to-papaya-500 hover:from-mango-400 hover:to-papaya-400 text-jungle-950 shadow-glow-mango'
@@ -128,6 +148,8 @@ export const TopBar: React.FC = () => {
             </>
           )}
         </button>
+
+        <RecordControls onExport={exportTake} />
 
         <div className="flex items-center gap-2.5 bg-jungle-950 px-3.5 py-1.5 rounded-xl border border-jungle-800">
           <Sliders size={13} className="text-mango-400" />
@@ -151,11 +173,12 @@ export const TopBar: React.FC = () => {
           <button
             onClick={bounce}
             disabled={isBouncing}
-            title="Render the current patch offline and download WAV + score"
+            title="Render the current patch offline, then export it as WAV or OGG (+ score)"
+            data-testid="bounce"
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-jungle-850 hover:bg-jungle-800 border border-jungle-700 text-cream-200 text-[10px] font-mono font-bold tracking-wider disabled:opacity-50"
           >
             <Download size={12} className="text-mango-400" />
-            {isBouncing ? 'RENDERING…' : 'BOUNCE WAV'}
+            {isBouncing ? 'RENDERING…' : 'BOUNCE'}
           </button>
           {lastScore && (
             <button
@@ -199,16 +222,29 @@ export const TopBar: React.FC = () => {
         </div>
       </div>
 
-      <div className="hidden lg:flex items-center gap-3 font-mono text-[11px]">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jungle-950 border border-jungle-800 text-cream-200/70">
+      <div className="flex items-center gap-3 font-mono text-[11px] whitespace-nowrap">
+        <a
+          href="/docs/USER_GUIDE.html"
+          target="_blank"
+          rel="noreferrer"
+          title="Open the user guide (served by npm start / npm run dev)"
+          data-testid="guide-link"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-jungle-950 border border-jungle-800 text-cream-200/70 hover:text-cream-100 hover:border-jungle-600"
+        >
+          <BookOpen size={12} className="text-lime-400" />
+          <span className="hidden xl:inline">GUIDE</span>
+        </a>
+        <div className="hidden 2xl:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jungle-950 border border-jungle-800 text-cream-200/70">
           <Cpu size={12} className="text-papaya-400" />
           <span>TARGET: NODE 22+</span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="hidden 2xl:flex items-center gap-1.5">
           <div className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-lime-400 shadow-glow-lime' : 'bg-cream-200/30'}`} />
           <span className="text-cream-200/60">{isPlaying ? 'DSP ACTIVE' : 'DSP IDLE'}</span>
         </div>
       </div>
+
+      <ExportModal source={exportSource} onClose={closeExport} />
     </header>
   );
 };
