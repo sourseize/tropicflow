@@ -169,6 +169,54 @@
         "toNodeId": "synth-1",
         "toPortId": "syn-gate-in",
         "color": "#70E000"
+      },
+      {
+        "id": "cable-10",
+        "fromNodeId": "chamber-1",
+        "fromPortId": "chm-trig-out",
+        "toNodeId": "percussion-1",
+        "toPortId": "perc-trig-in",
+        "color": "#70E000"
+      },
+      {
+        "id": "cable-11",
+        "fromNodeId": "chamber-1",
+        "fromPortId": "chm-trig-out",
+        "toNodeId": "marimba-1",
+        "toPortId": "mrm-trig-in",
+        "color": "#FF9E00"
+      },
+      {
+        "id": "cable-12",
+        "fromNodeId": "chamber-1",
+        "fromPortId": "chm-trig-out",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-gate-in",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-13",
+        "fromNodeId": "midi-1",
+        "fromPortId": "midi-gate-out",
+        "toNodeId": "marimba-1",
+        "toPortId": "mrm-trig-in",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-14",
+        "fromNodeId": "midi-1",
+        "fromPortId": "midi-mod-cv",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-filter-cv",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-15",
+        "fromNodeId": "midi-1",
+        "fromPortId": "midi-pitch-cv",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-pitch-cv",
+        "color": "#FF9E00"
       }
     ]
   },
@@ -178,6 +226,7 @@
     {
       "time": 0,
       "audibleTime": 0.006,
+      "source": "sequencer",
       "step": 0,
       "track": "kick",
       "velocity": 0.95
@@ -185,6 +234,7 @@
     {
       "time": 0,
       "audibleTime": 0.006,
+      "source": "sequencer",
       "step": 0,
       "track": "hihat",
       "velocity": 0.65
@@ -192,6 +242,7 @@
     {
       "time": 0,
       "audibleTime": 0.006,
+      "source": "sequencer",
       "step": 0,
       "track": "marimba",
       "frequency": 261.63,
@@ -200,6 +251,7 @@
     {
       "time": 0.1271186440677966,
       "audibleTime": 0.1331186440677966,
+      "source": "sequencer",
       "step": 1,
       "track": "hihat",
       "velocity": 0.65
@@ -207,6 +259,7 @@
     {
       "time": 0.2542372881355932,
       "audibleTime": 0.2602372881355932,
+      "source": "sequencer",
       "step": 2,
       "track": "hihat",
       "velocity": 0.65
@@ -214,6 +267,7 @@
     {
       "time": 0.2542372881355932,
       "audibleTime": 0.2602372881355932,
+      "source": "sequencer",
       "step": 2,
       "track": "synth",
       "frequency": 196,
@@ -222,6 +276,7 @@
     {
       "time": 0.3813559322033898,
       "audibleTime": 0.3873559322033898,
+      "source": "sequencer",
       "step": 3,
       "track": "hihat",
       "velocity": 0.65
@@ -229,6 +284,7 @@
     {
       "time": 0.3813559322033898,
       "audibleTime": 0.3873559322033898,
+      "source": "sequencer",
       "step": 3,
       "track": "marimba",
       "frequency": 587.33,
@@ -237,6 +293,7 @@
     {
       "time": 0.5084745762711864,
       "audibleTime": 0.5144745762711864,
+      "source": "sequencer",
       "step": 4,
       "track": "kick",
       "velocity": 0.95
@@ -244,6 +301,7 @@
     {
       "time": 0.5084745762711864,
       "audibleTime": 0.5144745762711864,
+      "source": "sequencer",
       "step": 4,
       "track": "snare",
       "velocity": 0.8
@@ -251,6 +309,7 @@
     {
       "time": 0.5084745762711864,
       "audibleTime": 0.5144745762711864,
+      "source": "sequencer",
       "step": 4,
       "track": "hihat",
       "velocity": 0.65
@@ -258,6 +317,7 @@
     {
       "time": 0.635593220338983,
       "audibleTime": 0.641593220338983,
+      "source": "sequencer",
       "step": 5,
       "track": "hihat",
       "velocity": 0.65
@@ -265,6 +325,7 @@
     {
       "time": 0.7627118644067796,
       "audibleTime": 0.7687118644067796,
+      "source": "sequencer",
       "step": 6,
       "track": "hihat",
       "velocity": 0.65
@@ -272,6 +333,7 @@
     {
       "time": 0.7627118644067796,
       "audibleTime": 0.7687118644067796,
+      "source": "sequencer",
       "step": 6,
       "track": "marimba",
       "frequency": 440,
@@ -280,6 +342,7 @@
     {
       "time": 0.8898305084745762,
       "audibleTime": 0.8958305084745762,
+      "source": "sequencer",
       "step": 7,
       "track": "hihat",
       "velocity": 0.65
@@ -287,6 +350,7 @@
     {
       "time": 0.8898305084745762,
       "audibleTime": 0.8958305084745762,
+      "source": "sequencer",
       "step": 7,
       "track": "synth",
       "frequency": 196,
@@ -295,6 +359,7 @@
     {
       "time": 1.0169491525423728,
       "audibleTime": 1.0229491525423728,
+      "source": "sequencer",
       "step": 8,
       "track": "kick",
       "velocity": 0.95
@@ -302,6 +367,7 @@
     {
       "time": 1.0169491525423728,
       "audibleTime": 1.0229491525423728,
+      "source": "sequencer",
       "step": 8,
       "track": "hihat",
       "velocity": 0.65
@@ -309,6 +375,7 @@
     {
       "time": 1.1440677966101696,
       "audibleTime": 1.1500677966101696,
+      "source": "sequencer",
       "step": 9,
       "track": "hihat",
       "velocity": 0.65
@@ -316,6 +383,7 @@
     {
       "time": 1.1440677966101696,
       "audibleTime": 1.1500677966101696,
+      "source": "sequencer",
       "step": 9,
       "track": "marimba",
       "frequency": 329.63,
@@ -324,6 +392,7 @@
     {
       "time": 1.2711864406779663,
       "audibleTime": 1.2771864406779663,
+      "source": "sequencer",
       "step": 10,
       "track": "hihat",
       "velocity": 0.65
@@ -331,6 +400,7 @@
     {
       "time": 1.2711864406779663,
       "audibleTime": 1.2771864406779663,
+      "source": "sequencer",
       "step": 10,
       "track": "synth",
       "frequency": 130.81,
@@ -339,6 +409,7 @@
     {
       "time": 1.398305084745763,
       "audibleTime": 1.404305084745763,
+      "source": "sequencer",
       "step": 11,
       "track": "hihat",
       "velocity": 0.65
@@ -346,6 +417,7 @@
     {
       "time": 1.5254237288135597,
       "audibleTime": 1.5314237288135597,
+      "source": "sequencer",
       "step": 12,
       "track": "kick",
       "velocity": 0.95
@@ -353,6 +425,7 @@
     {
       "time": 1.5254237288135597,
       "audibleTime": 1.5314237288135597,
+      "source": "sequencer",
       "step": 12,
       "track": "snare",
       "velocity": 0.8
@@ -360,6 +433,7 @@
     {
       "time": 1.5254237288135597,
       "audibleTime": 1.5314237288135597,
+      "source": "sequencer",
       "step": 12,
       "track": "hihat",
       "velocity": 0.65
@@ -367,6 +441,7 @@
     {
       "time": 1.5254237288135597,
       "audibleTime": 1.5314237288135597,
+      "source": "sequencer",
       "step": 12,
       "track": "marimba",
       "frequency": 261.63,
@@ -375,6 +450,7 @@
     {
       "time": 1.6525423728813564,
       "audibleTime": 1.6585423728813564,
+      "source": "sequencer",
       "step": 13,
       "track": "hihat",
       "velocity": 0.65
@@ -382,6 +458,7 @@
     {
       "time": 1.7796610169491531,
       "audibleTime": 1.7856610169491531,
+      "source": "sequencer",
       "step": 14,
       "track": "hihat",
       "velocity": 0.65
@@ -389,6 +466,7 @@
     {
       "time": 1.7796610169491531,
       "audibleTime": 1.7856610169491531,
+      "source": "sequencer",
       "step": 14,
       "track": "marimba",
       "frequency": 440,
@@ -397,6 +475,7 @@
     {
       "time": 1.9067796610169498,
       "audibleTime": 1.9127796610169499,
+      "source": "sequencer",
       "step": 15,
       "track": "hihat",
       "velocity": 0.65
@@ -404,6 +483,7 @@
     {
       "time": 1.9067796610169498,
       "audibleTime": 1.9127796610169499,
+      "source": "sequencer",
       "step": 15,
       "track": "synth",
       "frequency": 130.81,

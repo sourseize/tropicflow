@@ -3,9 +3,12 @@ import type { GraphNode, PatchCable } from '../../core/graph/GraphTypes.ts';
 import { INITIAL_NODES, INITIAL_CABLES } from '../../core/graph/NodeGraph.ts';
 import { makeCable } from '../../core/graph/PatchRouter.ts';
 import { AudioEngine } from '../../core/audio/AudioEngine.ts';
-import { ModuleCard } from './ModuleCard.tsx';
+import { ModuleCard, cardWidthPx } from './ModuleCard.tsx';
+import { stairsLayout } from '../../core/graph/StairsLayout.ts';
 import { CableRenderer } from '../../core/canvas/CableRenderer.ts';
-import { Plus, Trash2 } from 'lucide-react';
+import { EventBus } from '../../core/events/EventBus.ts';
+import type { PatchToggleRequestEvent } from '../../core/events/DomainEvents.ts';
+import { Plus, Trash2, ChevronsDownUp, ChevronsUpDown, Layers } from 'lucide-react';
 
 let cableCounter = 0;
 const CABLE_COLORS = ['#FF9E00', '#FF382E', '#70E000', '#FF6B35'];
@@ -14,13 +17,37 @@ export const ModularCanvas: React.FC = () => {
   const engine = AudioEngine.getInstance();
   const [nodes, setNodes] = useState<GraphNode[]>(INITIAL_NODES);
   const [cables, setCables] = useState<PatchCable[]>(() => engine.getPatch());
+  /** Minimised cards (single header row, jacks still reachable). */
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Cables are the source of truth for audio routing and trigger gating.
   useEffect(() => {
     engine.applyPatch(cables);
+    EventBus.getInstance().publish({ type: 'PATCH_CHANGED', timestamp: performance.now(), cableCount: cables.length });
   }, [cables, engine]);
+
+  // Panels (e.g. the soundboard's instrument chips) plug/unplug through the canvas.
+  useEffect(() => {
+    return EventBus.getInstance().subscribe<PatchToggleRequestEvent>('PATCH_TOGGLE_REQUEST', (e) => {
+      setCables((prev) => {
+        const existing = prev.filter((c) => c.fromPortId === e.fromPortId && c.toPortId === e.toPortId);
+        if (existing.length) return prev.filter((c) => !existing.includes(c));
+        const cable = makeCable(nodes, e.fromPortId, e.toPortId, `cable-u${++cableCounter}`, CABLE_COLORS[cableCounter % CABLE_COLORS.length]);
+        return cable ? [...prev, cable] : prev;
+      });
+    });
+  }, [nodes]);
+
+  const toggleCollapsed = useCallback((nodeId: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }, []);
 
   const draggingNodeRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
 
@@ -183,16 +210,57 @@ export const ModularCanvas: React.FC = () => {
   const resetPatch = () => {
     setNodes(INITIAL_NODES);
     setCables(INITIAL_CABLES);
+    setCollapsed(new Set());
+  };
+
+  const allCollapsed = nodes.every((n) => collapsed.has(n.id));
+  const collapseAll = () => setCollapsed(allCollapsed ? new Set() : new Set(nodes.map((n) => n.id)));
+
+  /**
+   * STACK: minimise every card and lay them out as stairs sized to the visible
+   * canvas. Rows per column = what the height allows; columns = as many as
+   * needed (balanced); inside a column the horizontal step is chosen so the
+   * stair spans the column's full width.
+   */
+  const stackAsStairs = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    const layout = stairsLayout(
+      nodes.map((n) => ({ id: n.id, width: cardWidthPx(n.type) })),
+      el.clientWidth,
+      el.clientHeight
+    );
+    setCollapsed(new Set(nodes.map((n) => n.id)));
+    setNodes((prev) => prev.map((n) => ({ ...n, position: layout.get(n.id) ?? n.position })));
   };
 
   return (
     <div
       ref={containerRef}
+      data-testid="modular-canvas"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       className="relative flex-1 w-full h-full bg-jungle-950 tropical-grid overflow-hidden"
     >
       <div className="absolute top-3 right-4 z-30 flex items-center gap-2">
+        <button
+          data-testid="stack"
+          onClick={stackAsStairs}
+          title="Minimise every module and arrange them as stairs across the visible canvas"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jungle-850 hover:bg-jungle-800 border border-jungle-700 text-cream-200 text-xs font-mono font-medium transition-colors shadow-md"
+        >
+          <Layers size={13} className="text-papaya-400" />
+          STACK
+        </button>
+        <button
+          data-testid="collapse-all"
+          onClick={collapseAll}
+          title={allCollapsed ? 'Expand every module' : 'Minimise every module to a single row'}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jungle-850 hover:bg-jungle-800 border border-jungle-700 text-cream-200 text-xs font-mono font-medium transition-colors shadow-md"
+        >
+          {allCollapsed ? <ChevronsUpDown size={13} className="text-mango-400" /> : <ChevronsDownUp size={13} className="text-mango-400" />}
+          {allCollapsed ? 'MAX ALL' : 'MIN ALL'}
+        </button>
         <button
           onClick={resetPatch}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-jungle-850 hover:bg-jungle-800 border border-jungle-700 text-cream-200 text-xs font-mono font-medium transition-colors shadow-md"
@@ -220,6 +288,8 @@ export const ModularCanvas: React.FC = () => {
         <ModuleCard
           key={node.id}
           node={node}
+          collapsed={collapsed.has(node.id)}
+          onToggleCollapsed={toggleCollapsed}
           onDragStart={handleDragStart}
           onPortMouseDown={handlePortMouseDown}
           onPortMouseUp={handlePortMouseUp}

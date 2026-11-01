@@ -610,6 +610,12 @@ export interface StemVerifyOptions {
    */
   decayMs?: number;
   onset?: OnsetOptions;
+  /**
+   * Options for the score-guided onset measurement, e.g. a `baselineMs`
+   * longer than one period of a sustained low note so its waveform edges
+   * are averaged out instead of being taken for the onset. Default 4 ms.
+   */
+  stepOnset?: StepOnsetOptions;
   signal?: 'tap' | 'master';
 }
 
@@ -665,7 +671,7 @@ export function verifyStemOnsets(
     // Pre-emphasis sharpens hats/clicks and gives the tightest timing; the
     // raw signal is fairer to a low pitched note landing on a higher one's
     // tail, so fall back to it when the emphasised rise is unconvincing.
-    const opts = { preEmphasis: false, searchMs: Math.max(tol.early, tol.late) + 1 };
+    const opts = { ...options.stepOnset, preEmphasis: false, searchMs: Math.max(tol.early, tol.late) + 1 };
     const me = measureStepOnset(emphasized, sampleRate, t, opts);
     const m = me.riseDb >= minRiseDb ? me : measureStepOnset(mono, sampleRate, t, opts);
     const errorMs = (m.measuredTime - t) * 1000;

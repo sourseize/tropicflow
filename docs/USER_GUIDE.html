@@ -97,6 +97,9 @@
     <li><a href="#canvas">Modular canvas &amp; cables</a></li>
     <li><a href="#sequencer">Groove matrix</a></li>
     <li><a href="#keys">Soundboard &amp; keys</a></li>
+    <li><a href="#midi">MIDI bridge</a></li>
+    <li><a href="#cv">CV cables</a></li>
+    <li><a href="#sense">SENSE: mic &amp; voice</a></li>
     <li><a href="#analyzer">Jungle analyzer</a></li>
     <li><a href="#chamber">Gravity chamber</a></li>
     <li><a href="#record">Recording a take</a></li>
@@ -109,8 +112,8 @@
 </nav>
 
 <main>
-  <h1>Play tropical instruments, drop balls in a <span>gravity chamber</span>, record what you hear.</h1>
-  <p class="lead">TROPICFLOW is a modular sound workstation that runs entirely in your browser. This guide walks through every panel, then shows how to record a live take and export it losslessly (WAV) or compressed (OGG / Opus).</p>
+  <h1>Play tropical instruments, drop balls in a <span>gravity chamber</span>, sing into it, record what you hear.</h1>
+  <p class="lead">TROPICFLOW is a modular sound workstation that runs entirely in your browser. This guide walks through every panel - including the MIDI bridge (a MIDI keyboard or your computer keys), the CV cables and the SENSE module (a microphone or a keyboard-driven voice that transposes and triggers things) - then shows how to record a live take and export it losslessly (WAV) or compressed (OGG / Opus).</p>
   <figure><img src="images/app-playing.png" alt="TROPICFLOW while the groove plays: header, modular canvas with patch cables, gravity chamber, groove matrix, soundboard and analyzer"><figcaption>The whole workstation while the groove plays. Cables carry audio (orange) and triggers (green / red).</figcaption></figure>
 
   <section id="start">
@@ -139,13 +142,18 @@ npm run dev          # or the Vite dev server with hot reload at http://localhos
 
   <section id="canvas">
     <h2 class="papaya">Modular canvas &amp; cables</h2><div class="stripe"></div>
-    <figure><img src="images/modular-canvas.png" alt="Eurorack-style modules with sagging patch cables"><figcaption>Seven modules: Tropic Clock, Mango Marimba, Tropical Tape Delay, Gravity Chamber, Tomato Drums, Papaya Acid Lead, Jungle Master Bus.</figcaption></figure>
-    <p>Drag a module by its title bar. Turn a knob by dragging up or down on it. Cables are <em>functional</em>: audio cables route signal, trigger cables decide which modules the clock (or the chamber) fires.</p>
+    <figure><img src="images/modular-canvas.png" alt="Eurorack-style modules with sagging patch cables"><figcaption>Nine modules: Tropic Clock, Mango Marimba, Tropical Tape Delay, Gravity Chamber, MIDI Bridge, Tomato Drums, Papaya Acid Lead, Jungle Master Bus, SENSE.</figcaption></figure>
+    <p>Drag a module by its title bar; <strong>click</strong> the title bar to minimise it to a single row (its jacks stay on the row and keep their cables), click again to maximise. Turn a knob by dragging up or down on it. Cables are <em>functional</em>: audio cables route signal, trigger cables decide which modules a source (the clock, the chamber, the MIDI bridge, the SENSE module) may fire, and <a href="#cv">CV cables</a> modulate.</p>
     <ul>
       <li><strong>Connect</strong>: drag from a jack to a compatible jack (output → input of the same family). Illegal pairs, e.g. a trigger into an audio input, are refused.</li>
       <li><strong>Unplug</strong>: double-click a jack.</li>
-      <li><strong>RESET PATCH</strong> restores the default routing; <strong>DISCONNECT ALL</strong> clears every cable (silence!).</li>
+      <li><strong>STACK</strong> minimises every module and lays them out as stairs across the visible canvas (more columns when the window is short); <strong>MIN ALL</strong> / <strong>MAX ALL</strong> minimise or maximise everything in place.</li>
+      <li><strong>RESET PATCH</strong> restores the default routing and layout; <strong>DISCONNECT ALL</strong> clears every cable (silence!).</li>
     </ul>
+    <div class="grid2">
+      <figure><img src="images/module-minimised.png" alt="A minimised module: one row with the title and its jacks"><figcaption>A minimised module is one row; cables still reach its jacks.</figcaption></figure>
+      <figure><img src="images/canvas-stack.png" alt="Every module minimised and arranged as stairs across the canvas"><figcaption>STACK: stairs sized to the visible canvas.</figcaption></figure>
+    </div>
     <div class="grid2">
       <figure><img src="images/module-clock.png" alt="Tropic Clock module"><figcaption>TROPIC CLOCK: tempo and swing; TRIG OUT drives the instruments.</figcaption></figure>
       <figure><img src="images/module-delay.png" alt="Tropical Tape Delay module"><figcaption>TROPICAL TAPE DELAY: time, damped feedback and wet mix.</figcaption></figure>
@@ -157,6 +165,8 @@ npm run dev          # or the Vite dev server with hot reload at http://localhos
       <tr><td>Papaya Acid Lead</td><td>Dual oscillator + resonant filter</td><td>Cutoff, resonance, detune</td></tr>
       <tr><td>Tropical Tape Delay</td><td>Tape echo with damped feedback</td><td>Time, feedback, wet mix</td></tr>
       <tr><td>Jungle Master Bus</td><td>Limiter + analyser</td><td>Master volume (same as the header slider)</td></tr>
+      <tr><td><a href="#midi">MIDI Bridge</a></td><td>MIDI keyboard / computer keys → GATE OUT, PITCH CV, MOD CV</td><td>Transpose, bend range, keys octave</td></tr>
+      <tr><td><a href="#sense">SENSE</a></td><td>Microphone / virtual voice → PITCH CV, LEVEL CV, ONSET TRIG</td><td>Gain, clarity, root, onset drum</td></tr>
     </table>
   </section>
 
@@ -168,8 +178,62 @@ npm run dev          # or the Vite dev server with hot reload at http://localhos
 
   <section id="keys">
     <h2 class="papaya">Soundboard &amp; keys</h2><div class="stripe"></div>
-    <figure><img src="images/keyboard.png" alt="Virtual keyboard with computer key labels"><figcaption>Click the keys or play them from the computer keyboard.</figcaption></figure>
-    <p>Choose <strong>MARIMBA</strong> or <strong>LEAD SYNTH</strong>, then play with the mouse or the keys <kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>T</kbd> <kbd>G</kbd> <kbd>Y</kbd> <kbd>H</kbd> <kbd>U</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>O</kbd> <kbd>L</kbd> <kbd>;</kbd>. Keyboard notes are part of "what you hear", so they end up in a take when the groove is running and REC is ticked.</p>
+    <figure><img src="images/keyboard.png" alt="Soundboard with two keys lit and the MARIMBA chip on"><figcaption>The computer keys as an instrument. Keys light for notes from any device - the keys, a MIDI keyboard, a replay.</figcaption></figure>
+    <p>The computer keyboard is a MIDI device of the <a href="#midi">MIDI bridge</a>. Play with the mouse or the keys: <kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>T</kbd> <kbd>G</kbd> <kbd>Y</kbd> <kbd>H</kbd> <kbd>U</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>O</kbd> <kbd>L</kbd> <kbd>P</kbd> <kbd>;</kbd> <kbd>'</kbd> are a chromatic octave and a half from C3 (the black keys on the row above). A key held is a note held: the synth sustains until you let go, the marimba and drums are one-shots.</p>
+    <table>
+      <tr><th>Keys</th><th>Effect</th></tr>
+      <tr><td><kbd>Z</kbd> / <kbd>X</kbd></td><td>Octave down / up (-2 .. +3); held notes keep their pitch</td></tr>
+      <tr><td><kbd>C</kbd> / <kbd>V</kbd></td><td>Velocity down / up in steps of 10 %</td></tr>
+      <tr><td><kbd>Shift</kbd> + note</td><td>Accent (+25 % velocity)</td></tr>
+      <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Mod wheel (MOD CV) up / down in steps of 10 %</td></tr>
+      <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>Pitch bend down / up while held (PITCH CV), springs back on release</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>A clap for the <a href="#sense">SENSE</a> module's virtual voice</td></tr>
+    </table>
+    <p>The <strong>MARIMBA</strong> / <strong>SYNTH</strong> / <strong>DRUMS</strong> chips are the cables from the bridge's <em>GATE OUT</em> jack: click one to plug or unplug that instrument (the canvas shows the cable). With the drums plugged, the General MIDI drum keys play them: 36 kick, 38/40 snare, 42/44 closed hat, 46 open hat (on the keys: <kbd>A</kbd> with the octave at -1 is 36).</p>
+    <div class="callout"><div class="t">Typing vs playing</div>Keys aimed at a text field, a slider or a menu are left alone, as are <kbd>Ctrl</kbd> / <kbd>Alt</kbd> / <kbd>⌘</kbd> shortcuts. Everything else is a note while <em>KEYS</em> is on (MIDI bridge card).</div>
+  </section>
+
+  <section id="midi">
+    <h2 class="papaya">MIDI bridge</h2><div class="stripe"></div>
+    <div class="grid2">
+      <figure><img src="images/midi-bridge.png" alt="MIDI BRIDGE module with KEYS ON, last note, transpose and bend range, log controls and three jacks"><figcaption>Computer keys as the device: last note and velocity, octave, TRANSPOSE, BEND RANGE, the performance LOG.</figcaption></figure>
+      <figure><img src="images/midi-bridge-device.png" alt="MIDI BRIDGE with MIDI ON listing a connected MIDI keyboard and the channel selector"><figcaption>A MIDI keyboard plugged in: pick the input (or all) and the channel (or omni).</figcaption></figure>
+    </div>
+    <p>The bridge turns a <strong>physical MIDI keyboard</strong> (Web MIDI) or the <strong>computer keys</strong> into a trigger and control source on the canvas. <em>GATE OUT</em> fires whichever instruments it is cabled to; <em>PITCH CV</em> carries the pitch bend (times BEND RANGE, in semitones) and <em>MOD CV</em> the mod wheel - see <a href="#cv">CV cables</a>. TRANSPOSE shifts every incoming note.</p>
+    <ul>
+      <li><strong>KEYS</strong>: the computer keyboard plays the bridge. Off, the keys still drive the SENSE module's voice if that is on.</li>
+      <li><strong>MIDI</strong>: asks the browser for MIDI access (it may prompt once). Devices are listed as they are plugged in; choose one input or all, and a channel or omni. Needs a secure context: <code>http://localhost</code> or <code>https://</code>, in Chrome, Edge or Firefox.</li>
+      <li><strong>Constant latency</strong>: every note is timed from the moment the key or MIDI message arrived and scheduled a fixed few tens of milliseconds later (the audio path's own latency plus a margin), so what you play keeps its exact spacing instead of jittering with the browser.</li>
+      <li><strong>LOG</strong>: while the groove runs, everything the bridge receives (keys, MIDI, the SENSE module's events) is logged relative to the first step. <strong>▷</strong> replays the log in realtime, the bin clears it, and <a href="#bounce">BOUNCE</a> renders it - a bounce after a performance contains the performance.</li>
+    </ul>
+    <div class="callout papaya"><div class="t">From the console</div><code>tropicflowInput.send([0x90, 60, 100])</code> plays C4 as if a device had sent it; <code>tropicflowInput.playScript(json)</code> replays a saved log; <code>tropicflowInput.midi.getStatus()</code> tells you why MIDI is not available.</div>
+  </section>
+
+  <section id="cv">
+    <h2>CV cables</h2><div class="stripe"></div>
+    <p>Orange-and-papaya <em>CV</em> jacks carry control values. Patch a source into a target and the target follows; several sources into one jack add up. The default patch wires the bridge's MOD CV into the synth's CUTOFF CV (the mod wheel or <kbd>↑</kbd>/<kbd>↓</kbd> opens the filter) and its PITCH CV into the synth's PITCH CV (the pitch wheel or <kbd>←</kbd>/<kbd>→</kbd> bends held notes and transposes new ones).</p>
+    <table>
+      <tr><th>Source</th><th>Value</th><th>Target</th><th>Effect</th></tr>
+      <tr><td>MIDI BRIDGE · PITCH CV</td><td>bend × BEND RANGE, semitones</td><td>PAPAYA ACID LEAD · PITCH CV</td><td>Held notes glide by it, new notes are transposed by it</td></tr>
+      <tr><td>MIDI BRIDGE · MOD CV</td><td>mod wheel, 0..1</td><td>PAPAYA ACID LEAD · CUTOFF CV</td><td>Up to three octaves above the CUTOFF knob</td></tr>
+      <tr><td>SENSE · PITCH CV</td><td>sung pitch minus ROOT, semitones</td><td>MANGO MARIMBA · PITCH CV</td><td>Every strike (sequencer, chamber, keys) transposed</td></tr>
+      <tr><td>SENSE · LEVEL CV</td><td>level, 0..1</td><td>TROPICAL TAPE DELAY · TIME CV</td><td>Delay time up to doubled</td></tr>
+      <tr><td>TROPIC CLOCK · SWING CV</td><td>swing, 0..1</td><td>any CV input</td><td>A control follows the swing knob</td></tr>
+    </table>
+    <p>Any source can go into any CV input: a control (0..1) into a pitch jack spans one octave, a pitch (semitones) into the cutoff counts in octaves. Pitch CV is applied when a note starts, so the <a href="#bounce">score</a> of a bounce carries the frequencies that actually sounded.</p>
+  </section>
+
+  <section id="sense">
+    <h2 class="lime">SENSE: mic &amp; voice</h2><div class="stripe"></div>
+    <figure><img src="images/sense.png" alt="SENSE module with VOICE ON, the tuner showing A3 at 220 Hz, a level meter, gain, clarity, root and onset settings, and three jacks"><figcaption>Singing A3 through the virtual voice: the tuner, the cents bar and the level meter follow; PITCH CV reports -3 semitones from the C4 root.</figcaption></figure>
+    <p>SENSE listens - to a <strong>microphone</strong> or to a <strong>virtual voice</strong> the computer keys sing through - and tracks the pitch, the level and the onsets (claps, hits) of what it hears. Three jacks make that usable in the patch:</p>
+    <ul>
+      <li><em>PITCH CV</em>: the sung note measured against ROOT, in semitones. Patch it into the marimba's PITCH CV, sing D4 over a C4 root, and the whole marimba part plays two semitones up; sing the root and it is back.</li>
+      <li><em>LEVEL CV</em>: how loud the input is (0..1), e.g. into the delay's TIME CV.</li>
+      <li><em>ONSET TRIG</em>: a clap or a hit fires the instruments it is cabled to: the chosen drum (ONSET: KICK / SNARE / HAT), a marimba strike or a synth note at the root (patch PITCH CV too and they follow your voice).</li>
+    </ul>
+    <p><strong>MIC</strong> asks for the microphone (secure context, a permission prompt once; echo cancellation and noise suppression are turned off so the tracker hears the raw signal). <strong>VOICE</strong> needs nothing: the note keys sing (with a little vibrato and breath), <kbd>Space</kbd> claps. Both can be on at once. GAIN scales the input before analysis; CLARITY is how sure the pitch detector must be before a pitch counts (raise it in a noisy room, lower it for a breathy voice). The tuner shows the nearest note, the cents off it and the detector's confidence.</p>
+    <div class="callout lime"><div class="t">Offline too</div>Sensor events go through the same log as MIDI, so a performance sung over the groove replays and bounces like one played. A recording can also be analysed offline: <code>npm run render:wav -- --preset sensor-follow --sense voice.wav</code> runs the same detectors over the file and renders with its pitch and claps.</div>
   </section>
 
   <section id="analyzer">
@@ -262,6 +326,11 @@ npm run dev          # or the Vite dev server with hot reload at http://localhos
       <tr><td>OGG says <em>realtime encode</em></td><td>No WebCodecs in this browser / context</td><td>Works, just slower; Chrome, Edge, Firefox 130+ on localhost/https encode in a second</td></tr>
       <tr><td>OGG greyed out</td><td>Neither WebCodecs nor a MediaRecorder Opus codec (e.g. older Safari)</td><td>Export WAV, or use another browser</td></tr>
       <tr><td>No sound at all</td><td>Browser autoplay policy</td><td>Click START GROOVE (a user gesture); check MASTER and the master bus cable</td></tr>
+      <tr><td>Keys do not play</td><td>KEYS is off on the MIDI bridge, the focus is in a text field / menu, or GATE OUT is not cabled to an instrument</td><td>Turn KEYS on, click the canvas, plug a chip on the soundboard</td></tr>
+      <tr><td>MIDI greyed out</td><td>Insecure context or a browser without Web MIDI (Safari)</td><td>Open <code>http://localhost:4173</code> or https; use Chrome, Edge or Firefox</td></tr>
+      <tr><td><em>MIDI permission refused</em> / <em>no MIDI service</em></td><td>The site permission was denied, or the system has no MIDI service (containers, some servers)</td><td>Allow MIDI for the site in the browser; on a normal desktop it just works. <code>npm run check</code> reports what the test browser sees</td></tr>
+      <tr><td>MIC greyed out / <em>permission refused</em> / <em>no microphone found</em></td><td>Insecure context, denied permission, or no audio input</td><td>Same as MIDI; meanwhile VOICE needs no hardware at all</td></tr>
+      <tr><td>Tuner flickers or shows the wrong octave</td><td>Noisy or very breathy input</td><td>Raise CLARITY, sing closer, lower GAIN if the level meter sits at 100 %</td></tr>
       <tr><td>Take shorter than expected</td><td>MAX reached, or REC was unticked</td><td>Raise MAX (up to 10 min)</td></tr>
       <tr><td>Exported range clamped</td><td>Start + duration exceeded the take</td><td>The sliders show the real range; <em>select all</em> for everything</td></tr>
     </table>
@@ -273,6 +342,12 @@ npm run dev          # or the Vite dev server with hot reload at http://localhos
     <pre><code># Render a preset to WAV + score; --ogg also writes an Opus file via the browser's encoder
 npm run render:wav -- --preset default-groove --bars 2 --out out/groove.wav
 npm run render:wav -- --preset chamber-only --ogg 128 --out out/chamber.wav      # + out/chamber.ogg
+
+# Replay a performance (the MIDI bridge's log JSON or a bounce score file) - GATE OUT cables decide who plays
+npm run render:wav -- --preset default-groove --input performance.json --transpose 12 --out out/take.wav
+
+# Analyse a recording with the SENSE detectors and render with its pitch (PITCH CV) and claps (ONSET TRIG)
+npm run render:wav -- --preset sensor-follow --sense voice.wav --out out/sense.wav
 
 # Validate an Ogg Opus file (CRCs, headers, granules, duration) - no ffmpeg needed
 npm run inspect:ogg -- out/chamber.ogg
@@ -293,7 +368,12 @@ npm test</code></pre>
     <h2>Shortcuts</h2><div class="stripe"></div>
     <table>
       <tr><th>Where</th><th>Gesture</th><th>Effect</th></tr>
-      <tr><td>Anywhere</td><td><kbd>A</kbd>…<kbd>;</kbd></td><td>Play the soundboard (marimba or lead)</td></tr>
+      <tr><td>Anywhere</td><td><kbd>A</kbd>…<kbd>'</kbd></td><td>Play (and hold) notes through the MIDI bridge; black keys <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd></td></tr>
+      <tr><td>Anywhere</td><td><kbd>Z</kbd> / <kbd>X</kbd>, <kbd>C</kbd> / <kbd>V</kbd>, <kbd>Shift</kbd></td><td>Octave, velocity, accent</td></tr>
+      <tr><td>Anywhere</td><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Mod wheel, pitch bend</td></tr>
+      <tr><td>Anywhere</td><td><kbd>Space</kbd></td><td>Clap (SENSE virtual voice)</td></tr>
+      <tr><td>Canvas</td><td>Click module title</td><td>Minimise / maximise</td></tr>
+      <tr><td>Canvas</td><td>Drag module title</td><td>Move</td></tr>
       <tr><td>Canvas</td><td>Drag jack → jack</td><td>Connect a cable</td></tr>
       <tr><td>Canvas</td><td>Double-click jack</td><td>Unplug</td></tr>
       <tr><td>Knob</td><td>Drag up / down</td><td>Change value</td></tr>

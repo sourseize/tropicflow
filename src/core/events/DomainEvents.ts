@@ -12,6 +12,8 @@ export type DomainEventType =
   | 'PARAM_CHANGED'
   | 'CABLE_CONNECTED'
   | 'CABLE_DISCONNECTED'
+  | 'PATCH_TOGGLE_REQUEST'
+  | 'PATCH_CHANGED'
   | 'RECORDING_STARTED'
   | 'RECORDING_STOPPED'
   | 'TAKE_STARTED'
@@ -97,6 +99,19 @@ export interface CableDisconnectedEvent extends BaseDomainEvent {
   cableId: string;
 }
 
+/** A panel asks the modular canvas to plug/unplug one connection (cables stay the single source of truth). */
+export interface PatchToggleRequestEvent extends BaseDomainEvent {
+  type: 'PATCH_TOGGLE_REQUEST';
+  fromPortId: string;
+  toPortId: string;
+}
+
+/** The canvas applied a new set of cables to the engine. */
+export interface PatchChangedEvent extends BaseDomainEvent {
+  type: 'PATCH_CHANGED';
+  cableCount: number;
+}
+
 export type DomainEvent =
   | BaseDomainEvent
   | NoteOnEvent
@@ -107,4 +122,6 @@ export type DomainEvent =
   | ChamberCollisionEvent
   | ParamChangedEvent
   | CableConnectedEvent
-  | CableDisconnectedEvent;
+  | CableDisconnectedEvent
+  | PatchToggleRequestEvent
+  | PatchChangedEvent;

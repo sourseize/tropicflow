@@ -4,6 +4,14 @@
  *   npm run render:wav -- --preset default-groove --bars 2 --out out.wav
  *   npm run render:wav -- --config my-config.json --out out.wav --score out.score.json
  *   npm run render:wav -- --preset chamber-only --ogg 128 --out out/chamber.wav   (+ out/chamber.ogg)
+ *   npm run render:wav -- --preset default-groove --input performance.json --out out/take.wav
+ *
+ * --input replays a performance (an input script: the JSON from the MIDI
+ * BRIDGE's log, or the `config.inputScript` of a bounce score file) through
+ * the MIDI BRIDGE; GATE OUT cables decide which instruments respond.
+ * --sense analyses a mono/stereo WAV (a recording of a voice, claps...) with
+ * the SENSE module's pitch / level / onset detectors and feeds the result in
+ * as sensor events (PITCH CV, LEVEL CV, ONSET TRIG per the cables).
  *
  * Writes <out>.wav (master output), <out>.score.json (scheduled notes) and,
  * with --tap, the pre-compressor tap used for exact timing verification.
@@ -16,6 +24,10 @@ import path from 'node:path';
 import { BrowserRenderer } from './lib/browserRender.ts';
 import type { RenderConfig } from '../src/core/render/RenderConfig.ts';
 import type { WavBitDepth } from '../src/core/render/WavCodec.ts';
+import { parseInputScript } from '../src/core/input/InputLog.ts';
+import { decodeWav } from '../src/core/render/WavCodec.ts';
+import { toMono } from '../src/core/analysis/AudioAnalysis.ts';
+import { analyseBuffer } from '../src/core/sense/SensorAnalysis.ts';
 
 const { values } = parseArgs({
   options: {
@@ -36,6 +48,12 @@ const { values } = parseArgs({
     'list-presets': { type: 'boolean', default: false },
     /** Also write <out>.ogg (Opus) at this bitrate in kb/s. */
     ogg: { type: 'string' },
+    /** Input script JSON (or a score file containing config.inputScript) replayed through the MIDI BRIDGE. */
+    input: { type: 'string' },
+    /** Semitones added to every replayed note. */
+    transpose: { type: 'string' },
+    /** WAV file analysed offline by the SENSE detectors into sensor events. */
+    sense: { type: 'string' },
   },
 });
 
@@ -59,6 +77,19 @@ async function main(): Promise<void> {
     if (values['sample-rate']) config.sampleRate = Number(values['sample-rate']);
     if (values.solo) config.solo = values.solo.split(',').map((t) => t.trim());
     if (values.dry) config.delay = { ...(config.delay ?? {}), mix: 0 };
+    if (values.input) {
+      const raw = JSON.parse(fs.readFileSync(values.input, 'utf8')) as { config?: { inputScript?: unknown } };
+      config.inputScript = parseInputScript(raw.config?.inputScript ?? raw);
+    }
+    if (values.transpose) config.bridge = { ...(config.bridge ?? {}), transpose: Number(values.transpose) };
+    if (values.sense) {
+      const wav = decodeWav(fs.readFileSync(values.sense));
+      const mono = wav.channels.length === 1 ? wav.channels[0] : toMono(wav.channels);
+      const events = analyseBuffer(mono, wav.sampleRate, { device: 'sensor:file' });
+      const existing = config.inputScript?.events ?? [];
+      config.inputScript = { version: 1, events: [...existing, ...events].sort((a, b) => a.time - b.time) };
+      console.log(`  sense: ${values.sense} -> ${events.filter((e) => e.kind === 'pitch').length} pitch, ${events.filter((e) => e.kind === 'onset').length} onset, ${events.filter((e) => e.kind === 'level').length} level events`);
+    }
     const bitDepth = Number(values['bit-depth']) as WavBitDepth;
     const oggKbps = values.ogg ? Number(values.ogg) : undefined;
     if (oggKbps !== undefined && !(oggKbps >= 6 && oggKbps <= 510)) throw new Error('--ogg expects a bitrate in kb/s between 6 and 510');

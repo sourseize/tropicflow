@@ -5,9 +5,12 @@ import { Knob } from '../ui/Knob.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { GravityChamberView } from '../chamber/GravityChamberView.tsx';
 import { ChamberMappingPanel } from '../chamber/ChamberMappingPanel.tsx';
+import { MidiBridgePanel } from '../input/MidiBridgePanel.tsx';
+import { SensePanel } from '../input/SensePanel.tsx';
 import { EventBus } from '../../core/events/EventBus.ts';
 import type { ChamberConfig } from '../../core/physics/ChamberEngine.ts';
-import { Move, ArrowDownToLine, Trash2, Download, Upload, Sliders } from 'lucide-react';
+import { ArrowDownToLine, Trash2, Download, Upload, Sliders } from 'lucide-react';
+import type { ModulePort } from '../../core/graph/GraphTypes.ts';
 
 function downloadJson(data: unknown, filename: string): void {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
@@ -22,14 +25,28 @@ function downloadJson(data: unknown, filename: string): void {
 
 interface ModuleCardProps {
   node: GraphNode;
+  /** Minimised: a single header row with the jacks inline (cables keep working). */
+  collapsed: boolean;
+  onToggleCollapsed: (nodeId: string) => void;
   onDragStart: (e: React.MouseEvent, nodeId: string) => void;
   onPortMouseDown: (e: React.MouseEvent, nodeId: string, portId: string, isOutput: boolean) => void;
   onPortMouseUp: (e: React.MouseEvent, nodeId: string, portId: string) => void;
   onPortDoubleClick: (e: React.MouseEvent, nodeId: string, portId: string) => void;
 }
 
+/** Card width per module type (the MIDI bridge is narrow to fit the right-hand column). */
+const CARD_WIDTH: Partial<Record<GraphNode['type'], string>> = { chamber: 'w-80', midi: 'w-56', sensor: 'w-56' };
+const CARD_WIDTH_PX: Partial<Record<GraphNode['type'], number>> = { chamber: 320, midi: 224, sensor: 224 };
+
+/** Rendered width of a card in px (for layouts computed by the canvas). */
+export function cardWidthPx(type: GraphNode['type']): number {
+  return CARD_WIDTH_PX[type] ?? 288;
+}
+
 export const ModuleCard: React.FC<ModuleCardProps> = ({
   node,
+  collapsed,
+  onToggleCollapsed,
   onDragStart,
   onPortMouseDown,
   onPortMouseUp,
@@ -39,6 +56,8 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
   const [, forceUpdate] = useState({});
   const [showMapping, setShowMapping] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** Where the header mousedown happened: a mouseup within a few px is a click (toggle), further is a drag (move). */
+  const headerPressRef = useRef<{ x: number; y: number } | null>(null);
 
   const refresh = () => forceUpdate({});
 
@@ -69,30 +88,71 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
     papaya: 'border-papaya-500/50 hover:border-papaya-400',
   };
 
-  return (
+  /** A jack: the 16 px dot carries data-port-id (cable anchor at +8, +8); the label is dropped when compact. */
+  const jack = (port: ModulePort, isOutput: boolean, compact: boolean, row: boolean = false) => (
     <div
-      style={{ left: `${node.position.x}px`, top: `${node.position.y}px` }}
-      className={`absolute ${node.type === 'chamber' ? 'w-80' : 'w-72'} bg-jungle-900/95 backdrop-blur-md rounded-xl border-2 ${borderThemes[node.themeColor]} shadow-2xl select-none z-10 transition-shadow hover:shadow-glow-${node.themeColor}`}
+      key={port.id}
+      data-port-id={port.id}
+      title={`${port.name} (${port.type})`}
+      onMouseDown={(e) => onPortMouseDown(e, node.id, port.id, isOutput)}
+      onMouseUp={(e) => onPortMouseUp(e, node.id, port.id)}
+      onDoubleClick={(e) => onPortDoubleClick(e, node.id, port.id)}
+      className={`flex items-center gap-1.5 cursor-pointer group ${isOutput && !compact && !row ? 'flex-row-reverse' : ''}`}
     >
       <div
-        onMouseDown={(e) => onDragStart(e, node.id)}
-        className="flex items-center justify-between px-3 py-2 bg-jungle-850 rounded-t-lg border-b border-jungle-750 cursor-grab active:cursor-grabbing"
+        className="w-4 h-4 rounded-full border-2 bg-jungle-950 flex items-center justify-center transition-transform group-hover:scale-125"
+        style={{ borderColor: port.color }}
       >
-        <div className="flex items-center gap-2">
+        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: port.color }} />
+      </div>
+      {!compact && <span className="text-cream-200/70 group-hover:text-cream-100">{port.name}</span>}
+    </div>
+  );
+
+  return (
+    <div
+      data-testid={`module-${node.id}`}
+      data-collapsed={collapsed ? 'true' : 'false'}
+      style={{ left: `${node.position.x}px`, top: `${node.position.y}px` }}
+      className={`absolute ${CARD_WIDTH[node.type] ?? 'w-72'} bg-jungle-900/95 backdrop-blur-md rounded-xl border-2 ${borderThemes[node.themeColor]} shadow-2xl select-none z-10 transition-shadow hover:shadow-glow-${node.themeColor}`}
+    >
+      <div
+        data-testid={`module-header-${node.id}`}
+        title="Click: minimise / maximise · Drag: move"
+        onMouseDown={(e) => {
+          headerPressRef.current = { x: e.clientX, y: e.clientY };
+          onDragStart(e, node.id);
+        }}
+        onClick={(e) => {
+          const press = headerPressRef.current;
+          headerPressRef.current = null;
+          if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) < 4) onToggleCollapsed(node.id);
+        }}
+        className={`flex items-center justify-between px-2.5 ${collapsed ? 'py-1 rounded-lg' : 'py-2 rounded-t-lg border-b border-jungle-750'} bg-jungle-850`}
+      >
+        <div className="flex items-center gap-2 min-w-0">
           <div
-            className="w-2.5 h-2.5 rounded-full"
+            className="w-2.5 h-2.5 rounded-full shrink-0"
             style={{ backgroundColor: node.accentHex, boxShadow: `0 0 8px ${node.accentHex}` }}
           />
-          <span className="font-mono font-bold text-xs tracking-wider text-cream-100">
+          <span className="font-mono font-bold text-xs tracking-wider text-cream-100 truncate">
             {node.title}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Badge variant={node.themeColor}>{node.type}</Badge>
-          <Move size={12} className="text-cream-200/40" />
+        <div className="flex items-center gap-1.5 shrink-0">
+          {collapsed ? (
+            <div className="flex items-center gap-1 text-[10px] font-mono" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              {node.inputs.map((port) => jack(port, false, true))}
+              {node.inputs.length > 0 && node.outputs.length > 0 && <span className="text-cream-200/30 px-0.5">|</span>}
+              {node.outputs.map((port) => jack(port, true, true))}
+            </div>
+          ) : (
+            <Badge variant={node.themeColor}>{node.type}</Badge>
+          )}
         </div>
       </div>
 
+      {!collapsed && (
       <div className="p-3.5 flex flex-col gap-3">
         {node.type === 'clock' && (
           <div className="grid grid-cols-2 gap-2">
@@ -443,6 +503,10 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
           </div>
         )}
 
+        {node.type === 'midi' && <MidiBridgePanel />}
+
+        {node.type === 'sensor' && <SensePanel />}
+
         {node.type === 'master' && (
           <div className="grid grid-cols-2 gap-2">
             <Knob
@@ -465,50 +529,19 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({
           </div>
         )}
 
-        <div className="pt-2 border-t border-jungle-800 flex justify-between items-center text-[10px] font-mono">
-          <div className="flex flex-col gap-1.5">
-            {node.inputs.map((port) => (
-              <div
-                key={port.id}
-                data-port-id={port.id}
-                onMouseDown={(e) => onPortMouseDown(e, node.id, port.id, false)}
-                onMouseUp={(e) => onPortMouseUp(e, node.id, port.id)}
-                onDoubleClick={(e) => onPortDoubleClick(e, node.id, port.id)}
-                className="flex items-center gap-1.5 cursor-pointer group"
-              >
-                <div
-                  className="w-4 h-4 rounded-full border-2 bg-jungle-950 flex items-center justify-center transition-transform group-hover:scale-125"
-                  style={{ borderColor: port.color }}
-                >
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: port.color }} />
-                </div>
-                <span className="text-cream-200/70 group-hover:text-cream-100">{port.name}</span>
-              </div>
-            ))}
+        {node.inputs.length === 0 && node.outputs.length <= 3 ? (
+          // Output-only modules keep their jacks on one row (short labels) to stay compact.
+          <div className="pt-2 border-t border-jungle-800 flex justify-between items-center text-[10px] font-mono">
+            {node.outputs.map((port) => jack({ ...port, name: port.name.split(' ')[0] }, true, false, true))}
           </div>
-
-          <div className="flex flex-col gap-1.5 items-end">
-            {node.outputs.map((port) => (
-              <div
-                key={port.id}
-                data-port-id={port.id}
-                onMouseDown={(e) => onPortMouseDown(e, node.id, port.id, true)}
-                onMouseUp={(e) => onPortMouseUp(e, node.id, port.id)}
-                onDoubleClick={(e) => onPortDoubleClick(e, node.id, port.id)}
-                className="flex items-center gap-1.5 cursor-pointer group flex-row-reverse"
-              >
-                <div
-                  className="w-4 h-4 rounded-full border-2 bg-jungle-950 flex items-center justify-center transition-transform group-hover:scale-125"
-                  style={{ borderColor: port.color }}
-                >
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: port.color }} />
-                </div>
-                <span className="text-cream-200/70 group-hover:text-cream-100">{port.name}</span>
-              </div>
-            ))}
+        ) : (
+          <div className="pt-2 border-t border-jungle-800 flex justify-between items-center text-[10px] font-mono">
+            <div className="flex flex-col gap-1.5">{node.inputs.map((port) => jack(port, false, false))}</div>
+            <div className="flex flex-col gap-1.5 items-end">{node.outputs.map((port) => jack(port, true, false))}</div>
           </div>
-        </div>
+        )}
       </div>
+      )}
     </div>
   );
 };

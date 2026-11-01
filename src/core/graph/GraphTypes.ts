@@ -6,6 +6,8 @@ export type ModuleType =
   | 'delay'
   | 'scope'
   | 'chamber'
+  | 'midi'
+  | 'sensor'
   | 'master';
 
 export type PortType = 'audio-out' | 'audio-in' | 'trigger-out' | 'trigger-in' | 'cv-out' | 'cv-in';

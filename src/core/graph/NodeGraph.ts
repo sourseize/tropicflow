@@ -18,7 +18,7 @@ export const INITIAL_NODES: GraphNode[] = [
     id: 'marimba-1',
     title: 'MANGO MARIMBA',
     type: 'marimba',
-    position: { x: 340, y: 50 },
+    position: { x: 330, y: 50 },
     inputs: [
       { id: 'mrm-trig-in', name: 'TRIG IN', type: 'trigger-in', direction: 'in', color: '#70E000' },
       { id: 'mrm-cv-in', name: 'PITCH CV', type: 'cv-in', direction: 'in', color: '#FF9E00' },
@@ -47,9 +47,10 @@ export const INITIAL_NODES: GraphNode[] = [
     id: 'synth-1',
     title: 'PAPAYA ACID LEAD',
     type: 'synth',
-    position: { x: 340, y: 350 },
+    position: { x: 330, y: 350 },
     inputs: [
       { id: 'syn-gate-in', name: 'GATE IN', type: 'trigger-in', direction: 'in', color: '#70E000' },
+      { id: 'syn-pitch-cv', name: 'PITCH CV', type: 'cv-in', direction: 'in', color: '#FF9E00' },
       { id: 'syn-filter-cv', name: 'CUTOFF CV', type: 'cv-in', direction: 'in', color: '#FF6B35' },
     ],
     outputs: [
@@ -62,7 +63,7 @@ export const INITIAL_NODES: GraphNode[] = [
     id: 'delay-1',
     title: 'TROPICAL TAPE DELAY',
     type: 'delay',
-    position: { x: 650, y: 50 },
+    position: { x: 630, y: 50 },
     inputs: [
       { id: 'del-audio-in', name: 'AUDIO IN', type: 'audio-in', direction: 'in', color: '#FF9E00' },
       { id: 'del-time-cv', name: 'TIME CV', type: 'cv-in', direction: 'in', color: '#70E000' },
@@ -77,7 +78,7 @@ export const INITIAL_NODES: GraphNode[] = [
     id: 'chamber-1',
     title: 'GRAVITY CHAMBER',
     type: 'chamber',
-    position: { x: 960, y: 50 },
+    position: { x: 930, y: 50 },
     inputs: [],
     outputs: [
       { id: 'chm-trig-out', name: 'HIT TRIG', type: 'trigger-out', direction: 'out', color: '#70E000' },
@@ -86,10 +87,38 @@ export const INITIAL_NODES: GraphNode[] = [
     accentHex: '#70E000',
   },
   {
+    id: 'midi-1',
+    title: 'MIDI BRIDGE',
+    type: 'midi',
+    position: { x: 1262, y: 50 },
+    inputs: [],
+    outputs: [
+      { id: 'midi-gate-out', name: 'GATE OUT', type: 'trigger-out', direction: 'out', color: '#70E000' },
+      { id: 'midi-pitch-cv', name: 'PITCH CV', type: 'cv-out', direction: 'out', color: '#FF9E00' },
+      { id: 'midi-mod-cv', name: 'MOD CV', type: 'cv-out', direction: 'out', color: '#FF6B35' },
+    ],
+    themeColor: 'papaya',
+    accentHex: '#FF6B35',
+  },
+  {
+    id: 'sensor-1',
+    title: 'SENSE',
+    type: 'sensor',
+    position: { x: 1262, y: 300 },
+    inputs: [],
+    outputs: [
+      { id: 'sns-pitch-cv', name: 'PITCH CV', type: 'cv-out', direction: 'out', color: '#FF9E00' },
+      { id: 'sns-level-cv', name: 'LEVEL CV', type: 'cv-out', direction: 'out', color: '#FF6B35' },
+      { id: 'sns-onset-out', name: 'ONSET TRIG', type: 'trigger-out', direction: 'out', color: '#70E000' },
+    ],
+    themeColor: 'lime',
+    accentHex: '#70E000',
+  },
+  {
     id: 'master-1',
     title: 'JUNGLE MASTER BUS',
     type: 'master',
-    position: { x: 650, y: 350 },
+    position: { x: 630, y: 350 },
     inputs: [
       { id: 'mst-in-l', name: 'SUM L/R', type: 'audio-in', direction: 'in', color: '#FF9E00' },
     ],
@@ -197,5 +226,31 @@ export const INITIAL_CABLES: PatchCable[] = [
     toNodeId: 'synth-1',
     toPortId: 'syn-gate-in',
     color: '#FF6B35',
+  },
+  // Keys / MIDI play the marimba out of the box (the soundboard's historical default).
+  {
+    id: 'cable-13',
+    fromNodeId: 'midi-1',
+    fromPortId: 'midi-gate-out',
+    toNodeId: 'marimba-1',
+    toPortId: 'mrm-trig-in',
+    color: '#FF6B35',
+  },
+  // Mod wheel opens the synth filter; pitch bend bends the synth.
+  {
+    id: 'cable-14',
+    fromNodeId: 'midi-1',
+    fromPortId: 'midi-mod-cv',
+    toNodeId: 'synth-1',
+    toPortId: 'syn-filter-cv',
+    color: '#FF6B35',
+  },
+  {
+    id: 'cable-15',
+    fromNodeId: 'midi-1',
+    fromPortId: 'midi-pitch-cv',
+    toNodeId: 'synth-1',
+    toPortId: 'syn-pitch-cv',
+    color: '#FF9E00',
   },
 ];

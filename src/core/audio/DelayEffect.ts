@@ -18,6 +18,8 @@ export class DelayEffect {
   private readonly dampFilter: BiquadFilterNode;
   private readonly ctx: BaseAudioContext;
   private params: DelayParams = { ...DEFAULT_DELAY_PARAMS };
+  /** TIME CV: octaves added to the delay time. */
+  private timeModOctaves: number = 0;
 
   constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
@@ -49,7 +51,22 @@ export class DelayEffect {
 
   public setDelayTime(seconds: number): void {
     this.params.time = Math.max(0.02, Math.min(1.5, seconds));
-    this.delayNode.delayTime.setTargetAtTime(this.params.time, this.ctx.currentTime, 0.05);
+    this.delayNode.delayTime.setTargetAtTime(this.effectiveTime(), this.ctx.currentTime, 0.05);
+  }
+
+  /** Delay time after CV modulation, within the node's 2 s maximum. */
+  public effectiveTime(): number {
+    return Math.max(0.02, Math.min(1.99, this.params.time * Math.pow(2, this.timeModOctaves)));
+  }
+
+  /** TIME CV target: octaves added to the delay time, applied from `when`. */
+  public setTimeModulation(octaves: number, when: number = this.ctx.currentTime): void {
+    this.timeModOctaves = octaves;
+    this.delayNode.delayTime.setTargetAtTime(this.effectiveTime(), Math.max(when, this.ctx.currentTime), 0.05);
+  }
+
+  public getTimeModulation(): number {
+    return this.timeModOctaves;
   }
 
   public setFeedback(amount: number): void {

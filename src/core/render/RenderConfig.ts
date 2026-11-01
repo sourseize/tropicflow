@@ -1,4 +1,4 @@
-import type { Pattern } from '../audio/AudioEngine.ts';
+import type { NoteSource, Pattern } from '../audio/AudioEngine.ts';
 import type { PatchCable } from '../graph/GraphTypes.ts';
 import type { SynthParams } from '../audio/OscillatorVoice.ts';
 import type { MarimbaParams } from '../audio/MarimbaModel.ts';
@@ -6,6 +6,8 @@ import type { PercussionParams } from '../audio/PercussionEngine.ts';
 import type { DelayParams } from '../audio/DelayEffect.ts';
 import type { ChamberConfig } from '../physics/ChamberEngine.ts';
 import type { CollisionEvent } from '../physics/ChamberTypes.ts';
+import type { InputScript } from '../input/InputLog.ts';
+import type { BridgeSettings, SensorSettings } from '../input/InputBinding.ts';
 
 /**
  * Everything needed to reproduce a render. Serialisable to JSON so the same
@@ -33,6 +35,15 @@ export interface RenderConfig {
   delay?: Partial<DelayParams>;
   /** Gravity chamber; omitted = disabled. Balls start from the configured state at t = 0. */
   chamber?: Partial<ChamberConfig>;
+  /**
+   * A performance (MIDI / computer keys / sensor events) replayed through the
+   * MIDI BRIDGE with times relative to the first step, so what was played
+   * live bounces exactly as heard. See core/input/InputLog.
+   */
+  inputScript?: InputScript;
+  bridge?: Partial<BridgeSettings>;
+  /** SENSE module settings (root note for PITCH CV, drum for ONSET TRIG). */
+  sensor?: Partial<SensorSettings>;
 }
 
 /** One scheduled note in a render - the "score" the WAV should match. */
@@ -45,7 +56,7 @@ export interface ScoreEvent {
    * lookahead delay, ~6 ms in Blink/Gecko/WebKit). Use this for analysis.
    */
   audibleTime: number;
-  source: 'sequencer' | 'chamber' | 'keyboard';
+  source: NoteSource;
   /** Sequencer step (sequencer notes only). */
   step?: number;
   track: string;

@@ -32,6 +32,7 @@ export class AudioClock {
   public readonly scheduleAheadTime: number = 0.1;
   private readonly stepCallbacks: Set<StepCallback> = new Set();
   private readonly horizonCallbacks: Set<HorizonCallback> = new Set();
+  private readonly swingCallbacks: Set<(swing: number) => void> = new Set();
   private readonly getTime: () => number;
 
   constructor(options: ClockOptions) {
@@ -65,7 +66,18 @@ export class AudioClock {
   }
 
   public setSwing(swingAmount: number): void {
-    this.swing = Math.max(0, Math.min(0.5, swingAmount));
+    const next = Math.max(0, Math.min(0.5, swingAmount));
+    if (next === this.swing) return;
+    this.swing = next;
+    this.swingCallbacks.forEach((cb) => cb(next));
+  }
+
+  /** Observe swing changes (the SWING CV jack publishes them). */
+  public subscribeSwing(callback: (swing: number) => void): () => void {
+    this.swingCallbacks.add(callback);
+    return () => {
+      this.swingCallbacks.delete(callback);
+    };
   }
 
   public getSwing(): number {

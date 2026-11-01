@@ -23,6 +23,7 @@ test('initial patch resolves to the documented routing', () => {
     'clk-trig-1->mrm-trig-in',
     'clk-trig-1->perc-trig-in',
     'clk-trig-1->syn-gate-in',
+    'midi-gate-out->mrm-trig-in', // keys / MIDI play the marimba out of the box
   ]);
 });
 

@@ -6,7 +6,7 @@ import { MarimbaModel } from './MarimbaModel.ts';
 import { DEFAULT_NOISE_SEED, PercussionEngine } from './PercussionEngine.ts';
 import { AudioClock } from './AudioClock.ts';
 import { EventBus } from '../events/EventBus.ts';
-import type { NoteOnEvent, StepTriggeredEvent } from '../events/DomainEvents.ts';
+import type { StepTriggeredEvent } from '../events/DomainEvents.ts';
 import type { GraphNode, PatchCable } from '../graph/GraphTypes.ts';
 import { INITIAL_CABLES, INITIAL_NODES } from '../graph/NodeGraph.ts';
 import { resolvePatch } from '../graph/PatchRouter.ts';
@@ -14,6 +14,8 @@ import { type ChamberConfig, ChamberEngine, type ChamberNote } from '../physics/
 import type { NoteCommand } from '../physics/CollisionMapper.ts';
 import type { CollisionEvent } from '../physics/ChamberTypes.ts';
 import { type Take, TakeRecorder, type TakeStopReason } from '../record/TakeRecorder.ts';
+import { InputBinding } from '../input/InputBinding.ts';
+import { type CvChange, CvBus } from '../cv/CvBus.ts';
 
 export type TrackId = 'kick' | 'snare' | 'hihat' | 'marimba' | 'synth';
 export type Pattern = Record<TrackId, boolean[]>;
@@ -48,7 +50,13 @@ export interface FiredNote {
   velocity: number;
 }
 
-export type NoteSource = 'sequencer' | 'chamber' | 'keyboard';
+/**
+ * Who asked for a note. All of them are trigger sources gated by cables from
+ * their jack: the clock, the chamber, the MIDI BRIDGE ('midi': hardware MIDI
+ * or the computer keys) and the SENSE module ('sensor': microphone / virtual
+ * voice, phase 3).
+ */
+export type NoteSource = 'sequencer' | 'chamber' | 'midi' | 'sensor';
 
 /** Every note the engine plays, from any source (used to build render scores). */
 export interface PlayedNote extends FiredNote {
@@ -65,6 +73,8 @@ export type NoteListener = (note: PlayedNote) => void;
 const TRIGGER_SOURCES: Record<string, NoteSource> = {
   'clk-trig-1': 'sequencer',
   'chm-trig-out': 'chamber',
+  'midi-gate-out': 'midi',
+  'sns-onset-out': 'sensor',
 };
 
 export interface AudioEngineOptions {
@@ -99,6 +109,10 @@ export class AudioEngine {
   public readonly chamber: ChamberEngine;
   /** Taps the master output to record what you hear (see core/record). */
   public readonly recorder: TakeRecorder;
+  /** MIDI BRIDGE: InputEvents (MIDI, computer keys, scripts) -> notes, gated by cables (see core/input). */
+  public readonly input: InputBinding;
+  /** CV routing: cv-out jacks -> cv-in jacks through cables (see core/cv). */
+  public readonly cv: CvBus = new CvBus();
   private readonly eventBus: EventBus;
   private readonly publishEvents: boolean;
 
@@ -113,6 +127,10 @@ export class AudioEngine {
   private readonly stepListeners: Set<StepListener> = new Set();
   private readonly noteListeners: Set<NoteListener> = new Set();
 
+  /** When set, chamber notes are queued here instead of played (offline time-ordered replay). */
+  private chamberQueue: ChamberNote[] | null = null;
+  /** The clock's step hook into the chamber (bar-synced drops); the offline renderer pre-drives it itself. */
+  public chamberStepHook: boolean = true;
   /** REC checkbox: record whenever the transport runs. */
   private recordArmed = false;
   private lastTake: Take | null = null;
@@ -144,6 +162,7 @@ export class AudioEngine {
     this.recorder = new TakeRecorder(this.ctx, this.masterBus.outputNode, {
       onMaxLengthReached: (take) => this.storeTake(take, 'max-length'),
     });
+    this.input = new InputBinding(this);
 
     this.outputPorts = new Map<string, AudioNode>([
       ['mrm-audio-out', this.marimba.outputNode],
@@ -163,6 +182,8 @@ export class AudioEngine {
 
     this.applyPatch(options.cables ?? INITIAL_CABLES);
     this.bindClock();
+    // SWING CV out: the clock's swing (0..0.5) as a 0..1 control.
+    this.clock.subscribeSwing((swing) => this.setCvSource('clk-swing-1', swing / 0.5, this.ctx.currentTime));
   }
 
   /** Realtime singleton bound to the browser AudioContext. */
@@ -181,10 +202,10 @@ export class AudioEngine {
   // -------------------------------------------------------------------
 
   /**
-   * Re-wire the audio graph and trigger gating from a set of cables.
-   * Audio cables connect module outputs to module inputs; trigger cables
-   * decide which modules the clock is allowed to fire. CV cables are
-   * accepted but have no effect yet.
+   * Re-wire the audio graph, trigger gating and CV routing from a set of
+   * cables. Audio cables connect module outputs to module inputs; trigger
+   * cables decide which modules a source may fire; CV cables feed the
+   * modulation targets (see core/cv/CvBus).
    */
   public applyPatch(cables: PatchCable[]): void {
     this.cables = cables.map((c) => ({ ...c }));
@@ -207,6 +228,44 @@ export class AudioEngine {
       if (!this.triggerTargets.has(source)) this.triggerTargets.set(source, new Set());
       this.triggerTargets.get(source)!.add(target);
     }
+
+    this.applyCvChanges(this.cv.setLinks(resolved.cv), this.ctx.currentTime);
+  }
+
+  // -------------------------------------------------------------------
+  // CV
+  // -------------------------------------------------------------------
+
+  /** Publish a CV source value (mod wheel, bend, swing, sensor) effective from `when`. */
+  public setCvSource(portId: string, value: number, when: number): void {
+    this.applyCvChanges(this.cv.setSource(portId, value), when);
+  }
+
+  private applyCvChanges(changes: CvChange[], when: number): void {
+    for (const c of changes) {
+      switch (c.targetPortId) {
+        case 'syn-filter-cv':
+          this.synth.setCutoffModulation(c.value, when);
+          break;
+        case 'syn-pitch-cv':
+          this.synth.setPitchOffset(c.value, when);
+          break;
+        case 'del-time-cv':
+          this.delay.setTimeModulation(c.value, when);
+          break;
+        case 'mrm-cv-in':
+          // Applied per strike in playNote (the marimba has no continuous pitch).
+          break;
+      }
+    }
+  }
+
+  /** Frequency a note of `track` sounds at once its PITCH CV is applied. */
+  private applyPitchCv(track: TrackId, frequency: number): number {
+    const port = track === 'synth' ? 'syn-pitch-cv' : track === 'marimba' ? 'mrm-cv-in' : null;
+    if (!port) return frequency;
+    const semitones = this.cv.targetValue(port);
+    return semitones === 0 ? frequency : frequency * Math.pow(2, semitones / 12);
   }
 
   public getPatch(): PatchCable[] {
@@ -242,11 +301,19 @@ export class AudioEngine {
   /**
    * Play a note at `when` if the source is patched to the instrument's
    * module and the track is not muted. Returns true when it sounded.
+   * With `extra.holdId` a synth note is held until `releaseHeld(holdId)`
+   * instead of using `cmd.duration`.
    */
-  public playNote(cmd: NoteCommand, when: number, source: NoteSource, extra: { step?: number; collision?: CollisionEvent } = {}): boolean {
+  public playNote(
+    cmd: NoteCommand,
+    when: number,
+    source: NoteSource,
+    extra: { step?: number; collision?: CollisionEvent; holdId?: string } = {}
+  ): boolean {
     const module = this.moduleForTrack(cmd.track);
-    if (source !== 'keyboard' && !this.isTriggerTarget(module, source)) return false;
+    if (!this.isTriggerTarget(module, source)) return false;
     if (this.trackMask !== null && !this.trackMask.has(cmd.track)) return false;
+    if (cmd.frequency !== undefined) cmd = { ...cmd, frequency: this.applyPitchCv(cmd.track, cmd.frequency) };
 
     switch (cmd.track) {
       case 'kick':
@@ -262,14 +329,43 @@ export class AudioEngine {
         this.marimba.strike(cmd.frequency ?? MARIMBA_NOTES[0], cmd.velocity, when);
         break;
       case 'synth':
-        this.synth.triggerNote(cmd.frequency ?? SYNTH_NOTES[0], cmd.velocity, cmd.duration ?? 0.18, when);
+        if (extra.holdId !== undefined) {
+          this.synth.triggerNote(cmd.frequency ?? SYNTH_NOTES[0], cmd.velocity, undefined, when, extra.holdId);
+        } else {
+          this.synth.triggerNote(cmd.frequency ?? SYNTH_NOTES[0], cmd.velocity, cmd.duration ?? 0.18, when);
+        }
         break;
     }
-    this.emitNote({ time: when, track: cmd.track, frequency: cmd.frequency, velocity: cmd.velocity, source, ...extra });
+    const { step, collision } = extra;
+    this.emitNote({ time: when, track: cmd.track, frequency: cmd.frequency, velocity: cmd.velocity, source, step, collision });
     return true;
   }
 
-  private playChamberNote(note: ChamberNote): void {
+  /** Release a synth note that was started with `playNote(..., { holdId })`. */
+  public releaseHeld(holdId: string, when: number): void {
+    this.synth.releaseNote(holdId, when);
+  }
+
+  /**
+   * Offline rendering: queue chamber notes so the renderer can apply them in
+   * time order with input events (CV state at the note's time) while the
+   * physics still runs in one pass (its collision times are sub-step exact
+   * only then). Returns the queue; call `playChamberNote` for each entry.
+   */
+  public deferChamberNotes(): ChamberNote[] {
+    this.chamberQueue = [];
+    return this.chamberQueue;
+  }
+
+  public stopDeferringChamberNotes(): void {
+    this.chamberQueue = null;
+  }
+
+  public playChamberNote(note: ChamberNote, force: boolean = false): void {
+    if (this.chamberQueue && !force) {
+      this.chamberQueue.push(note);
+      return;
+    }
     const sounded = this.playNote(note.command, note.time, 'chamber', { collision: note.collision });
     if (!sounded || !this.publishEvents) return;
     this.eventBus.publish({
@@ -302,7 +398,7 @@ export class AudioEngine {
       if (this.chamber.isRunning()) this.chamber.runTo(horizon);
     });
     this.clock.subscribe((stepIndex, audioTime) => {
-      this.chamber.onStep(stepIndex, audioTime);
+      if (this.chamberStepHook) this.chamber.onStep(stepIndex, audioTime);
       const fired = this.triggerStep(stepIndex, audioTime);
       this.stepListeners.forEach((l) => l(stepIndex, audioTime, fired));
       if (!this.publishEvents) return;
@@ -361,6 +457,8 @@ export class AudioEngine {
     if (this.recordArmed) await this.startTake();
     this.clock.start();
     this.chamber.start(this.clock.getStartTime());
+    // The performance log is anchored to the first step, like a bounce's t = 0.
+    this.input.log.start(this.clock.getStartTime());
     if (this.publishEvents) {
       this.eventBus.publish({ type: 'AUDIO_STARTED', timestamp: performance.now() });
     }
@@ -369,6 +467,7 @@ export class AudioEngine {
   public stopAudio(): void {
     this.clock.stop();
     this.chamber.stop();
+    this.input.log.stop();
     if (this.recorder.isRecording()) void this.stopTake('stopped');
     if (this.publishEvents) {
       this.eventBus.publish({ type: 'AUDIO_STOPPED', timestamp: performance.now() });
@@ -448,24 +547,5 @@ export class AudioEngine {
 
   public setPattern(pattern: Pattern): void {
     this.pattern = clonePattern(pattern);
-  }
-
-  public playDirectNote(channel: 'synth' | 'marimba', frequency: number): void {
-    void this.resume();
-    if (channel === 'synth') {
-      this.playNote({ track: 'synth', frequency, velocity: 0.85, duration: 0.3 }, this.ctx.currentTime, 'keyboard');
-    } else {
-      this.playNote({ track: 'marimba', frequency, velocity: 0.9 }, this.ctx.currentTime, 'keyboard');
-    }
-
-    if (!this.publishEvents) return;
-    const event: NoteOnEvent = {
-      type: 'NOTE_ON',
-      timestamp: performance.now(),
-      channel,
-      frequency,
-      velocity: 0.85,
-    };
-    this.eventBus.publish(event);
   }
 }

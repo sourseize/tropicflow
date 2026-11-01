@@ -193,6 +193,30 @@
         "toNodeId": "synth-1",
         "toPortId": "syn-gate-in",
         "color": "#FF6B35"
+      },
+      {
+        "id": "cable-13",
+        "fromNodeId": "midi-1",
+        "fromPortId": "midi-gate-out",
+        "toNodeId": "marimba-1",
+        "toPortId": "mrm-trig-in",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-14",
+        "fromNodeId": "midi-1",
+        "fromPortId": "midi-mod-cv",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-filter-cv",
+        "color": "#FF6B35"
+      },
+      {
+        "id": "cable-15",
+        "fromNodeId": "midi-1",
+        "fromPortId": "midi-pitch-cv",
+        "toNodeId": "synth-1",
+        "toPortId": "syn-pitch-cv",
+        "color": "#FF9E00"
       }
     ],
     "delay": {

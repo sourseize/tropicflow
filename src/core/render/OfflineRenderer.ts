@@ -1,6 +1,7 @@
 import { AudioEngine, type TrackId } from '../audio/AudioEngine.ts';
 import { MasterBus } from '../audio/MasterBus.ts';
 import type { RenderConfig, RenderResult, ScoreEvent } from './RenderConfig.ts';
+import { ScriptPlayer, parseInputScript } from '../input/InputLog.ts';
 
 /**
  * Measure the latency of the master bus by pushing a single-sample impulse
@@ -88,10 +89,42 @@ export async function renderOffline(config: RenderConfig): Promise<RenderResult>
     });
   });
 
+  // Validate (configs come from files) and replay through the same binding the live devices use.
+  const player = config.inputScript ? new ScriptPlayer(parseInputScript(config.inputScript), 0) : null;
+
+  // The physics runs in one pass (its collision times are sub-step exact only
+  // then): feed it the steps' bar-synced drop requests from the probe clock,
+  // simulate, and queue its notes to be merged below.
+  const chamberNotes = engine.deferChamberNotes();
+  if (config.chamber) {
+    engine.chamber.start(0);
+    for (let i = 0; i < steps; i++) engine.chamber.onStep(i % engine.clock.getTotalSteps(), probe.durationForSteps(i));
+    engine.chamber.runTo(totalSeconds);
+  }
+  engine.chamberStepHook = false;
+  chamberNotes.sort((a, b) => a.time - b.time);
+  let chamberCursor = 0;
   engine.clock.reset(0);
-  if (config.chamber) engine.chamber.start(0);
-  engine.clock.advanceSteps(steps);
-  if (config.chamber) engine.chamber.runTo(totalSeconds);
+
+  // Apply everything in time order, like the realtime clock does: before each
+  // step, the input events (CV state) and chamber notes up to that moment,
+  // interleaved by time; then the step.
+  const applyUntil = (until: number) => {
+    const events = player ? player.runTo(until) : [];
+    let e = 0;
+    while (e < events.length || (chamberCursor < chamberNotes.length && chamberNotes[chamberCursor].time <= until)) {
+      const nextEvent = e < events.length ? events[e].time : Infinity;
+      const nextNote = chamberCursor < chamberNotes.length && chamberNotes[chamberCursor].time <= until ? chamberNotes[chamberCursor].time : Infinity;
+      if (nextEvent <= nextNote) engine.input.bus.publish(events[e++]);
+      else engine.playChamberNote(chamberNotes[chamberCursor++], true);
+    }
+  };
+  for (let i = 0; i < steps; i++) {
+    applyUntil(engine.clock.getNextStepTime());
+    engine.clock.advanceSteps(1);
+  }
+  applyUntil(totalSeconds);
+  engine.stopDeferringChamberNotes();
   score.sort((a, b) => a.time - b.time);
 
   const rendered = await ctx.startRendering();
@@ -102,6 +135,8 @@ export async function renderOffline(config: RenderConfig): Promise<RenderResult>
 
 function applyParams(engine: AudioEngine, config: RenderConfig): void {
   if (config.masterVolume !== undefined) engine.masterBus.setVolume(config.masterVolume);
+  if (config.bridge) engine.input.updateSettings(config.bridge);
+  if (config.sensor) engine.input.updateSensorSettings(config.sensor);
   if (config.synth) {
     for (const [k, v] of Object.entries(config.synth)) {
       engine.synth.updateParam(k as keyof typeof config.synth, v as never);

@@ -16,6 +16,7 @@ import { decodeWav } from '../../src/core/render/WavCodec.ts';
 import { verifyScore } from '../../src/core/analysis/AudioAnalysis.ts';
 import { inspectOggOpus } from '../../src/core/export/OggOpus.ts';
 import type { ScoreEvent } from '../../src/core/render/RenderConfig.ts';
+import { realtimeWasHealthy, type StepMargin } from './lib/realtime.ts';
 /// <reference path=\"../../src/types/window.d.ts\" />
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -282,16 +283,23 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
   const takeInfo = () =>
     page.evaluate(() => {
       const t = window.tropicflowEngine.getLastTake();
-      return t && { durationSeconds: t.durationSeconds, sampleRate: t.sampleRate, channels: t.channels.length, startContextTime: t.startContextTime, syncExact: t.syncExact, bpm: t.bpm };
+      return t && { durationSeconds: t.durationSeconds, sampleRate: t.sampleRate, channels: t.channels.length, startContextTime: t.startContextTime, syncExact: t.syncExact, bpm: t.bpm, recordedAt: t.recordedAt };
     });
 
-  test('REC + START records what you hear; STOP finalises a take whose notes verify against what was scheduled', async () => {
+  test('REC + START records what you hear; STOP finalises a take whose notes verify against what was scheduled', async (t) => {
     await page.click('text=STOP ENGINE');
     await page.waitForTimeout(1500); // let the tape delay tail of the previous groove die out
     await page.evaluate(() => {
       (window as unknown as { __takeNotes: unknown[] }).__takeNotes = [];
       window.tropicflowEngine.subscribeNotes((n) =>
         (window as unknown as { __takeNotes: unknown[] }).__takeNotes.push({ time: n.time, track: n.track, frequency: n.frequency, velocity: n.velocity, source: n.source })
+      );
+      // Realtime health: how far ahead of the audio clock each step was scheduled. The clock
+      // works 100 ms ahead on a 25 ms timer, so a margin near or below zero means the main
+      // thread stalled and the note was played late through no fault of the engine.
+      (window as unknown as { __margins: unknown[] }).__margins = [];
+      window.tropicflowEngine.subscribeSteps((_s, audioTime) =>
+        (window as unknown as { __margins: unknown[] }).__margins.push({ audioTime, margin: audioTime - window.tropicflowEngine.ctx.currentTime })
       );
     });
     assert.match((await page.textContent('[data-testid="rec-status"]')) ?? '', /NO TAKE/);
@@ -334,7 +342,13 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
       .filter((e) => e.audibleTime > 0.15 && e.audibleTime < take.durationSeconds - 0.1);
     assert.ok(score.length >= 16, `only ${score.length} notes fell inside the take`);
     const v = verifyScore(wav.channels, wav.sampleRate, score, { signal: 'master' });
-    console.log(`    take: ${score.length} notes in ${take.durationSeconds.toFixed(2)} s, timing error mean ${v.meanAbsErrorMs.toFixed(2)} / max ${v.maxAbsErrorMs.toFixed(2)} ms`);
+    const margins = await page.evaluate(() => (window as unknown as { __margins: StepMargin[] }).__margins);
+    // Judge the same window as the verification (the first step after START is excluded there too).
+    const window_ = { from: take.startContextTime + 0.15 - busLatency, to: take.startContextTime + take.durationSeconds - 0.1 - busLatency };
+    const judged = margins.filter((m) => m.audioTime >= window_.from && m.audioTime <= window_.to);
+    const minMargin = Math.min(...judged.map((m) => m.margin));
+    console.log(`    take: ${score.length} notes in ${take.durationSeconds.toFixed(2)} s, timing error mean ${v.meanAbsErrorMs.toFixed(2)} / max ${v.maxAbsErrorMs.toFixed(2)} ms; scheduling margin min ${(minMargin * 1000).toFixed(0)} ms over ${judged.length} steps`);
+    if (!realtimeWasHealthy(t, margins, 'take verification', window_)) return;
     // A live take starts mid-pattern with tails ringing, so a band-level check may occasionally
     // miss a repeated note; alignment is what matters here (mean error well under a render quantum).
     assert.ok(v.failures.length <= 2, v.failures.map((f) => `${f.event.track}@${f.event.audibleTime.toFixed(3)}: ${f.reason}`).join('\n'));
@@ -404,12 +418,19 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
     assert.equal(await page.evaluate(() => window.tropicflowEngine.recorder.isRecording()), false);
     await page.check('[data-testid="rec-arm"]');
     await page.waitForFunction(() => window.tropicflowEngine.recorder.isRecording());
+    const armedAt = Date.now();
     await page.waitForTimeout(400);
     await page.uncheck('[data-testid="rec-arm"]');
-    // The take is stored once the worklet has flushed, shortly after isRecording() turns false.
-    await page.waitForFunction(() => !window.tropicflowEngine.recorder.isRecording() && window.tropicflowEngine.getLastTake()!.durationSeconds < 1.4);
+    // The new take lasts as long as REC was ticked: ~0.4 s plus however long the browser took to
+    // act on the clicks (on a loaded machine that can exceed a second), so judge it against the
+    // measured wall time rather than a fixed limit.
+    const armedFor = (Date.now() - armedAt) / 1000;
+    await page.waitForFunction(
+      (firstAt) => !window.tropicflowEngine.recorder.isRecording() && window.tropicflowEngine.getLastTake()!.recordedAt !== firstAt,
+      take.recordedAt
+    );
     const second = (await takeInfo())!;
-    assert.ok(second.durationSeconds > 0.3 && second.durationSeconds < 1.4, `second take ${second.durationSeconds}s replaced the first`);
+    assert.ok(second.durationSeconds > 0.3 && second.durationSeconds <= armedFor + 0.3, `second take ${second.durationSeconds}s (REC was ticked for ${armedFor.toFixed(2)} s) replaced the first`);
   });
 
   test('OGG fallback without WebCodecs (MediaRecorder, realtime) is valid and sample-aligned with the take', async () => {

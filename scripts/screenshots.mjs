@@ -74,6 +74,16 @@ async function shot(page, name, opts = {}) {
 }
 
 const HEADER = { x: 0, y: 0, width: VIEWPORT.width, height: 66 };
+
+/** Drag a cable between two jacks. */
+async function dragCable(page, fromPort, toPort) {
+  const from = await page.locator(`[data-port-id="${fromPort}"]`).boundingBox();
+  const to = await page.locator(`[data-port-id="${toPort}"]`).boundingBox();
+  await page.mouse.move(from.x + 8, from.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 8, to.y + 8, { steps: 10 });
+  await page.mouse.up();
+}
 const HEADER_RIGHT = { x: 560, y: 0, width: 940, height: 66 };
 const panel = (heading) => `xpath=//*[self::h3 or self::span][contains(normalize-space(.), "${heading}")]/ancestor::div[contains(@class, "rounded-xl")][1]`;
 const moduleCard = (title) => `xpath=//*[contains(normalize-space(.), "${title}") and contains(@class, "font-bold")]/ancestor::div[contains(@class, "absolute")][1]`;
@@ -97,8 +107,36 @@ try {
   await page.click('text=START GROOVE');
   await page.waitForTimeout(1200);
   await shot(page, 'sequencer', { selector: panel('16-STEP TROPICAL GROOVE MATRIX') });
-  await shot(page, 'keyboard', { selector: panel('TROPICAL SOUNDBOARD') });
+  // Keys held while shooting: lit keys on the soundboard, activity on the MIDI BRIDGE.
+  await page.keyboard.down('k');
+  await page.keyboard.down('o');
+  await page.waitForTimeout(150);
+  await shot(page, 'keyboard', { selector: panel('SOUNDBOARD / KEYS') });
+  await shot(page, 'midi-bridge', { selector: moduleCard('MIDI BRIDGE') });
+  await page.keyboard.up('k');
+  await page.keyboard.up('o');
   await shot(page, 'visualizer', { selector: panel('JUNGLE ANALYZER') });
+  // SENSE with the virtual voice singing A3 (key H) and PITCH CV patched into the marimba.
+  await page.click('[data-testid="sense-voice"]');
+  await dragCable(page, 'sns-pitch-cv', 'mrm-cv-in');
+  await page.keyboard.down('h');
+  await page.waitForTimeout(500);
+  await shot(page, 'sense', { selector: moduleCard('SENSE') });
+  await page.keyboard.up('h');
+  await page.waitForTimeout(300);
+  await page.click('[data-testid="sense-voice"]');
+  await page.dblclick('[data-port-id="mrm-cv-in"]');
+  await page.click('text=RESET PATCH');
+  // Min / max / stack.
+  await page.click('[data-testid="module-header-delay-1"]');
+  await page.waitForTimeout(150);
+  await shot(page, 'module-minimised', { selector: '[data-testid="module-delay-1"]' });
+  await page.click('[data-testid="module-header-delay-1"]');
+  await page.click('[data-testid="stack"]');
+  await page.waitForTimeout(250);
+  await shot(page, 'canvas-stack', { selector: '.tropical-grid', pad: 0 });
+  await page.click('text=RESET PATCH');
+  await page.waitForTimeout(150);
   await page.click('[data-testid="chamber-drop"]');
   await page.waitForTimeout(250);
   await page.click('[data-testid="chamber-drop"]');
@@ -167,7 +205,37 @@ try {
   await shot(page, 'header-bounce', { clip: HEADER_RIGHT });
   await context.close();
 
-  // 6. Insecure context (no AudioWorklet): REC disabled with a reason.
+  // 6. A (fake) MIDI keyboard plugged in: MIDI ON with the device and channel selectors.
+  const ctxMidi = await browser.newContext({ viewport: VIEWPORT });
+  const pMidi = await ctxMidi.newPage();
+  await pMidi.addInitScript(() => {
+    class FakeInput extends EventTarget {
+      constructor() {
+        super();
+        this.id = 'fake-1';
+        this.name = 'Launchkey Mini';
+        this.manufacturer = 'Novation';
+        this.state = 'connected';
+        this.onmidimessage = null;
+      }
+    }
+    const input = new FakeInput();
+    navigator.requestMIDIAccess = async () => ({ inputs: new Map([[input.id, input]]), outputs: new Map(), onstatechange: null });
+    window.__fakeInput = input;
+  });
+  await pMidi.goto(url);
+  await pMidi.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
+  await pMidi.click('[data-testid="midi-enable"]');
+  await pMidi.waitForFunction(() => window.tropicflowInput.midi.getStatus().state === 'ready');
+  await pMidi.evaluate(() => {
+    const e = new MIDIMessageEvent('midimessage', { data: new Uint8Array([0x90, 64, 96]) });
+    window.__fakeInput.onmidimessage(e);
+  });
+  await pMidi.waitForTimeout(150);
+  await shot(pMidi, 'midi-bridge-device', { selector: moduleCard('MIDI BRIDGE') });
+  await ctxMidi.close();
+
+  // 7. Insecure context (no AudioWorklet): REC disabled with a reason.
   const ctx2 = await browser.newContext({ viewport: VIEWPORT });
   const p2 = await ctx2.newPage();
   await p2.addInitScript(() => {

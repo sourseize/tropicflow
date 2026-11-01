@@ -15,9 +15,11 @@ import { BrowserRenderer, type BrowserRenderResult } from '../../scripts/lib/bro
 import { decodeWav } from '../../src/core/render/WavCodec.ts';
 import { inspectOggOpus } from '../../src/core/export/OggOpus.ts';
 import {
+  bandLevelDb,
   bandRise,
   compareBuffers,
   peak,
+  powerSpectrum,
   toMono,
   verifyScore,
   verifyStemOnsets,
@@ -270,6 +272,162 @@ describe('offline render (headless Chromium)', () => {
       for (const c of v.checks) bySource[c.event.source as 'sequencer' | 'chamber']++;
       console.log(`    ${track} stem: ${bySource.sequencer} sequencer + ${bySource.chamber} chamber notes verified, ${v.masked.length} masked (max ${v.maxAbsErrorMs.toFixed(2)} ms)`);
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // MIDI BRIDGE: a scripted performance replayed through the same binding the live devices use
+  // -------------------------------------------------------------------------
+
+  test('midi: a scripted performance lands in the score at its exact times and is gated by GATE OUT cables', async () => {
+    const cfg = await renderer.presetConfig('midi-performance');
+    const script = cfg.inputScript!;
+    const mix = await renderer.render(cfg);
+    const midi = mix.score.filter((e) => e.source === 'midi');
+    const noteOns = script.events.filter((e) => e.kind === 'noteOn');
+    // Every note-on reaches the marimba and the synth; the GM kick key (36) also fires the kick.
+    assert.equal(midi.filter((e) => e.track === 'marimba').length, noteOns.length);
+    assert.equal(midi.filter((e) => e.track === 'synth').length, noteOns.length);
+    assert.deepEqual(midi.filter((e) => e.track === 'kick').map((e) => e.time), [1.0]);
+    assert.equal(midi.filter((e) => e.track === 'snare' || e.track === 'hihat').length, 0);
+    for (const e of midi) {
+      const src = noteOns.find((n) => n.time === e.time && (e.track === 'kick' ? n.note === 36 : Math.abs(e.frequency! - 440 * Math.pow(2, (n.note - 69) / 12)) < 1e-6));
+      assert.ok(src, `midi note ${e.track} @ ${e.time} ${e.frequency} has no source event`);
+      assert.ok(Math.abs(e.velocity - src!.velocity) < 1e-12);
+    }
+    // The sequencer is untouched by the performance.
+    assert.equal(mix.score.filter((e) => e.source === 'sequencer').length, 64);
+
+    // Remove GATE OUT -> synth: the synth no longer receives the performance, everything else is unchanged.
+    const noSynth = await renderer.render({ ...cfg, cables: cfg.cables.filter((c) => c.id !== 'cable-midi-synth') });
+    assert.equal(noSynth.score.filter((e) => e.source === 'midi' && e.track === 'synth').length, 0);
+    assert.equal(noSynth.score.filter((e) => e.source === 'midi').length, midi.length - noteOns.length);
+
+    // Transpose shifts every played frequency by the same ratio.
+    const up = await renderer.render({ ...cfg, bridge: { transpose: 12 } });
+    const upMarimba = up.score.filter((e) => e.source === 'midi' && e.track === 'marimba');
+    const marimba = midi.filter((e) => e.track === 'marimba');
+    assert.equal(upMarimba.length, marimba.length);
+    for (let i = 0; i < marimba.length; i++) assert.ok(Math.abs(upMarimba[i].frequency! / marimba[i].frequency! - 2) < 1e-9);
+  });
+
+  test('midi: every performed note verifies sample-accurately on its solo stem; the render is deterministic', async () => {
+    const cfg = await renderer.presetConfig('midi-performance');
+    const mix = await renderer.render(cfg);
+    const again = await renderer.render(cfg);
+    assertEquivalentRenders(toMono(dec(mix.wav).channels), toMono(dec(again.wav).channels), dec(mix.wav).sampleRate, 'midi-performance');
+
+    const summary: string[] = [];
+    for (const track of ['marimba', 'synth', 'kick']) {
+      const stem = await renderer.render({ ...cfg, solo: [track], delay: { mix: 0 } });
+      const tap = dec(stem.tapWav);
+      // The GM kick key (note 36) also drives the synth at 65 Hz: one period is 15 ms, so the
+      // rise estimator is up to a period late there; allow one extra period for the synth stem,
+      // and average the onset baseline over more than a period of the sustained 130 Hz
+      // sequencer note ringing under the chord (its waveform edges are not onsets).
+      const options = track === 'synth' ? { tolerance: { early: 0.6, late: 22 + 16 }, stepOnset: { baselineMs: 16 } } : {};
+      const v = verifyStemOnsets(tap.channels, tap.sampleRate, mix.score, track, options);
+      assert.equal(v.failures.length, 0, `${track}: ` + v.failures.map((f) => `${f.event.time.toFixed(4)}s (${f.event.source}) ${f.reason}`).join('; '));
+      assert.equal(v.spurious.length, 0, `${track}: unexpected onsets at ${v.spurious.map((t) => t.toFixed(4)).join(', ')}`);
+      const midiChecks = v.checks.filter((c) => c.event.source === 'midi');
+      assert.ok(midiChecks.length > 0, `${track}: no midi notes checked`);
+      summary.push(`${track} ${midiChecks.length} midi + ${v.checks.length - midiChecks.length} seq ok, ${v.masked.length} masked (max ${v.maxAbsErrorMs.toFixed(2)} ms)`);
+    }
+    console.log(`    ${summary.join('; ')}`);
+  });
+
+  test('cv: the mod wheel opens the synth filter (CUTOFF CV) and the pitch wheel bends held and new notes (PITCH CV)', async () => {
+    const cfg = await renderer.presetConfig('midi-cv');
+    const r = await renderer.render(cfg);
+    const tap = dec(r.tapWav);
+    const mono = toMono(tap.channels);
+    const sr = tap.sampleRate;
+
+    // 1. CUTOFF CV: C3 held 0.1-1.1 s, mod wheel 0 -> 1 at 0.6 s. The 1800 Hz lowpass opens to
+    //    ~14.4 kHz, so the 3-6 kHz band of the sawtooth rises by far more than it could by itself.
+    const hi = { lowHz: 3000, highHz: 6000 };
+    const closed = bandLevelDb(mono, sr, Math.round(0.35 * sr), 8192, hi, 'hann');
+    const open = bandLevelDb(mono, sr, Math.round(0.85 * sr), 8192, hi, 'hann');
+    // Without the mod -> cutoff cable the same moments are unchanged: compare like with like.
+    const unpatched = await renderer.render({ ...cfg, cables: cfg.cables.filter((c) => c.id !== 'cable-14') });
+    const um = toMono(dec(unpatched.tapWav).channels);
+    const uOpen = bandLevelDb(um, sr, Math.round(0.85 * sr), 8192, hi, 'hann');
+    const uClosed = bandLevelDb(um, sr, Math.round(0.35 * sr), 8192, hi, 'hann');
+    console.log(`    cutoff cv: 3-6 kHz band at 0.85 s ${uOpen.toFixed(1)} dB unpatched -> ${open.toFixed(1)} dB with the mod wheel up (before the wheel: ${uClosed.toFixed(1)} / ${closed.toFixed(1)} dB)`);
+    assert.ok(Math.abs(closed - uClosed) < 1, 'identical before the wheel moves');
+    assert.ok(open - uOpen > 8, `mod wheel should open the filter: +${(open - uOpen).toFixed(1)} dB vs unpatched`);
+
+    // 2. PITCH CV on a held note: C4 held 1.5-2.5 s, bend +1 (range 2 st) at 2.0 s: the fundamental
+    //    glides from 261.6 to 293.7 Hz. Spectral peak before vs after (8192-pt FFT: 5.9 Hz bins).
+    const peakHz = (at: number) => {
+      const spec = powerSpectrum(mono, Math.round(at * sr), 8192, 'hann');
+      let best = 1;
+      for (let k = 1; k < spec.length && (k * sr) / 8192 < 400; k++) if (spec[k] > spec[best]) best = k;
+      return (best * sr) / 8192;
+    };
+    const before = peakHz(1.7);
+    const after = peakHz(2.25);
+    console.log(`    pitch cv: held note ${before.toFixed(1)} Hz -> ${after.toFixed(1)} Hz after bend`);
+    assert.ok(Math.abs(before - 261.63) < 8, `unbent ${before}`);
+    assert.ok(Math.abs(after - 293.66) < 8, `bent ${after}`);
+
+    // 3. New notes while the bend is held are transposed, and the score says so (synth and, through
+    //    the extra cable, the marimba); the last note-off/bend reset leave nothing hanging.
+    const at26 = r.score.filter((e) => Math.abs(e.time - 2.6) < 1e-9);
+    assert.deepEqual(at26.map((e) => e.track).sort(), ['marimba', 'synth']);
+    for (const e of at26) assert.ok(Math.abs(e.frequency! - 293.66) < 0.01, `${e.track} at 2.6 s: ${e.frequency}`);
+    const at15 = r.score.find((e) => Math.abs(e.time - 1.5) < 1e-9 && e.track === 'synth')!;
+    assert.ok(Math.abs(at15.frequency! - 261.63) < 0.01);
+    // Bend into the marimba only (cable-bend-marimba) but not into the synth -> synth unbent, marimba bent.
+    const noSynthBend = await renderer.render({ ...cfg, cables: cfg.cables.filter((c) => c.id !== 'cable-15') });
+    const n26 = Object.fromEntries(noSynthBend.score.filter((e) => Math.abs(e.time - 2.6) < 1e-9).map((e) => [e.track, e.frequency]));
+    assert.ok(Math.abs(n26.synth! - 261.63) < 0.01 && Math.abs(n26.marimba! - 293.66) < 0.01, JSON.stringify(n26));
+
+    // Deterministic.
+    const again = await renderer.render(cfg);
+    assertEquivalentRenders(mono, toMono(dec(again.tapWav).channels), sr, 'midi-cv');
+  });
+
+  test('sensor: tracked pitch transposes the marimba through PITCH CV, onsets fire the chosen drum through ONSET TRIG, at exact times', async () => {
+    const cfg = await renderer.presetConfig('sensor-follow');
+    const r = await renderer.render(cfg);
+    const bar = (60 / 118) * 4;
+    // Bar 1: humming the root (C4) -> PITCH CV 0 -> the marimba pattern plays as written.
+    const plain = await renderer.render({ ...cfg, inputScript: undefined });
+    const marimba = (res: typeof r) => res.score.filter((e) => e.track === 'marimba' && e.source === 'sequencer');
+    const a = marimba(r);
+    const b = marimba(plain);
+    assert.equal(a.length, b.length);
+    for (let i = 0; i < a.length; i++) {
+      const ratio = a[i].frequency! / b[i].frequency!;
+      const expected = a[i].time < bar - 1e-9 ? 1 : Math.pow(2, 2 / 12); // D4 over C4 = +2 semitones from the second bar
+      assert.ok(Math.abs(ratio - expected) < 1e-3, `marimba @${a[i].time.toFixed(3)}: ratio ${ratio.toFixed(4)} vs ${expected.toFixed(4)}`);
+    }
+    // Onsets: snare hits (sensor settings) at exactly 0.6 s and bar + 0.6 s with the onset strength as velocity.
+    const hits = r.score.filter((e) => e.source === 'sensor');
+    assert.deepEqual(hits.map((e) => [e.track, Number(e.time.toFixed(6)), e.velocity]), [
+      ['snare', 0.6, 0.9],
+      ['snare', Number((bar + 0.6).toFixed(6)), 0.6],
+    ]);
+    // They are real hits on the snare stem, at those times.
+    const stem = await renderer.render({ ...cfg, solo: ['snare'], delay: { mix: 0 } });
+    const tap = dec(stem.tapWav);
+    const v = verifyStemOnsets(tap.channels, tap.sampleRate, r.score, 'snare');
+    assert.equal(v.failures.length, 0, v.failures.map((f) => `${f.event.time.toFixed(4)}s ${f.reason}`).join('; '));
+    assert.ok(v.checks.some((c) => c.event.source === 'sensor'));
+    // Without the ONSET TRIG cable the claps are silent; without the PITCH CV cable nothing transposes.
+    const noCables = await renderer.render({ ...cfg, cables: cfg.cables.filter((c) => !c.id.startsWith('cable-sense')) });
+    assert.equal(noCables.score.filter((e) => e.source === 'sensor').length, 0);
+    const m2 = marimba(noCables);
+    for (let i = 0; i < m2.length; i++) assert.ok(Math.abs(m2[i].frequency! / b[i].frequency! - 1) < 1e-9);
+    // Sensor settings: the onset drum follows the config.
+    const kick = await renderer.render({ ...cfg, sensor: { rootNote: 60, onsetDrum: 'kick' } });
+    assert.deepEqual(kick.score.filter((e) => e.source === 'sensor').map((e) => e.track), ['kick', 'kick']);
+  });
+
+  test('midi: a malformed input script is rejected with a reason instead of rendering silently', async () => {
+    const cfg = await renderer.presetConfig('midi-performance');
+    const bad = { ...cfg, inputScript: { version: 1, events: [{ kind: 'noteOn', time: 0, device: 'x', note: 200, velocity: 1 }] } } as unknown as RenderConfig;
+    await assert.rejects(() => renderer.render(bad), /event 0: note/);
   });
 
   test('harness runs in a secure context and encodes a render to Ogg Opus of exactly the rendered length', async () => {

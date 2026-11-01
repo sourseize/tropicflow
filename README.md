@@ -10,7 +10,10 @@ A local-first spatial sound synthesis and modular computing workstation built wi
 - **Web Audio DSP Architecture**: Dedicated single-purpose audio voices including FM Marimba acoustic modeling, analog Percussion engine (Kick, Snare, Hi-Hat), dual-oscillator resonant synth lead/bass, and tape delay with damped feedback.
 - **Sample-Accurate Lookahead Clock**: Every note is scheduled on the Web Audio timeline at its exact step time (no timer jitter), with micro-timing swing.
 - **16-Step Polyrhythmic Groove Matrix**: Playhead synchronised to the moment each step actually sounds, with per-step auditioning.
-- **Live Soundboard & Keys**: Tactile keyboard playable via click or computer keys (`A`-`K`).
+- **MIDI Bridge / Live Keys**: a `MIDI BRIDGE` module on the canvas turns a physical MIDI keyboard (Web MIDI) *or* the computer keyboard into a trigger source: patch its `GATE OUT` to the marimba, the synth (held notes with note-off) and/or the drums (GM keys 36/38/42/46). Computer keys: `A`-`'` chromatic from C3, `Z`/`X` octave, `C`/`V` velocity, `Shift` accent, arrows = mod wheel / pitch bend; the on-screen soundboard lights for notes from any device. Every note is scheduled from its DOM timestamp with a **constant latency** (no main-thread jitter), logged relative to the groove start, replayable (`REPLAY`) and rendered by `BOUNCE`. Console / tests: `tropicflowInput.send([0x90, 60, 100])`. Plan and status: [docs/HARDWARE_BRIDGE_PLAN.md](docs/HARDWARE_BRIDGE_PLAN.md).
+- **SENSE module (sensory modulator)**: a microphone (`getUserMedia`) *or* a keyboard-driven **virtual voice** (the keys sing, `Space` claps - no mic needed) is tracked in realtime: a YIN pitch detector and a level/onset detector (pure TypeScript, unit-tested on synthetic signals) feed three jacks - `PITCH CV` (semitones from a ROOT note: sing D4 over a C4 root and everything patched follows +2 st), `LEVEL CV` and `ONSET TRIG` (a clap fires the chosen drum, or a note, per the cables). Tuner, cents bar and level meter on the card. Sensor events go through the same input bus as MIDI, so they are logged, replayed, bounced, and a recording can be analysed offline (`render:wav --sense voice.wav`).
+- **Functional CV cables**: the MIDI BRIDGE's `MOD CV` (mod wheel) and `PITCH CV` (pitch bend × BEND range) and the clock's `SWING CV` are real control voltages. Patch them into the synth's `CUTOFF CV` (up to +3 octaves), the synth's `PITCH CV` (bends held notes live, transposes new ones), the marimba's `PITCH CV` (transposes strikes) or the delay's `TIME CV`. Several sources into one jack add up; the default patch wires mod → cutoff and bend → synth pitch.
+- **Min / max / stack cards**: click a module header to minimise it to a single row (jacks stay patchable), drag to move; `MIN ALL` / `MAX ALL`, and `STACK` arranges every minimised card as stairs sized to the visible canvas (more columns when the height runs out).
 - **Dual Real-Time Visualizer**: Phosphor CRT Oscilloscope and 64-band FFT Spectrum Analyzer.
 - **Gravity Chamber / Collision Beat Drop**: a deterministic 2-D physics box patched into the modular canvas. Balls fall under gravity and every collision triggers a note through a configurable **Collision Mapper** (surface → instrument, scale, root, velocity curve). Drop balls by hand (now or on the next bar), automatically every Nth bar, or by clicking in the chamber; draw pegs and ramps with the mouse and set their notes with the wheel. Tempo-independent physics with an optional QUANTIZE knob that snaps hits toward the 16th grid; export/import chambers as JSON. **User guide: [docs/USER_GUIDE.html → Gravity chamber](docs/USER_GUIDE.html#chamber).**
 - **Live Take Recording**: tick **REC** next to START GROOVE and everything you hear while the groove runs (sequencer, chamber hits, keyboard, knob tweaks) is captured sample-accurately through an AudioWorklet tap on the master bus. The **MAX** slider (1-10 min, default 1) stops a take by itself. **User guide: [Recording & export](#recording--export).**
@@ -29,11 +32,17 @@ A local-first spatial sound synthesis and modular computing workstation built wi
 
 ```
 src/core/audio      voices, clock, engine, patch application   (no DOM, context injected)
-src/core/graph      module/port model + pure patch resolution  (PatchRouter)
+src/core/graph      module/port model + pure patch resolution  (PatchRouter), STACK stairs layout
+src/core/cv         CvBus: cv-out -> cv-in routing through cables, kind-aware scaling (pure)
+src/core/sense      PitchDetector (YIN), LevelOnset, SensorAnalysis (events, whole-buffer analysis) - pure;
+                    SensorEngine (mic / virtual voice -> AnalyserNode polling -> input bus), VirtualVoice
 src/core/physics    PhysicsChamber (simulation), CollisionMapper (hit -> note), ChamberEngine (scheduling)
 src/core/render     OfflineRenderer, RenderConfig, WAV codec, presets
 src/core/record     TakeRecorder: AudioWorklet tap on the master output (live takes)
 src/core/export     Ogg/Opus muxer (pure), WebCodecs Opus encoder, range/fade/file-name helpers
+src/core/input      hardware bridge: InputEvent model, MIDI parser, computer-keyboard reducer, timestamp
+                    mapper, log/script replay (pure); InputBinding (events -> notes, gated by cables),
+                    KeyboardDevice / WebMidiDevice adapters, InputHub (realtime wiring, window.tropicflowInput)
 src/core/analysis   onset/band/buffer analysis used by tests and CLI
 src/harness         browser entry for headless rendering
 scripts/            render-wav, compare-wav CLIs
@@ -90,7 +99,11 @@ Implementation notes:
 
 - The master bus `DynamicsCompressorNode` adds a **6 ms lookahead latency** (Blink/Gecko/WebKit). A note scheduled at `t` becomes audible at `t + 6 ms`. The offline renderer measures this (`busLatency`) and records both `time` and `audibleTime` in the score. Live takes contain the same 6 ms offset.
 - `AudioWorkletGlobalScope.currentFrame` in Chromium starts counting when the worklet thread begins rendering, not at context creation; do not use it to align captured audio with `AudioContext.currentTime` (see [Recording & export](#recording--export) for the marker-based alternative).
-- CV jacks (pitch / cutoff / time CV) are accepted by the patch system but have no audio effect yet.
+- **`AudioParam.cancelAndHoldAtTime()` scheduled ahead of time does not hold in Chromium**: a release ramp placed after it starts from the *previous* automation event (measured offline: a "held" synth note decayed through its whole hold). `OscillatorVoice` therefore computes the envelope value analytically and re-schedules the partial ramp with `cancelScheduledValues` + `exponentialRampToValueAtTime`. This also corrected the sequencer's fixed-length synth notes (their release used to start from the attack peak); the goldens were regenerated.
+- **Input latency policy**: a MIDI / key event stamped at DOM time `T` is scheduled at `map(T) + L`, where `map` uses `AudioContext.getOutputTimestamp()` and `L = max(20 ms, baseLatency + outputLatency + 5 ms)` (47 ms in headless Chromium). Constant by design: the spacing of what was played is preserved instead of jittering with the main thread. `getOutputTimestamp()` occasionally returns a *stale* pair under load, so the mapper keeps the largest offset of the last 250 ms; it is sampled at 10 Hz plus once per event, because polling it at 40 Hz measurably worsened the engine's own scheduling jitter (it touches the audio thread's position).
+- **Offline renders apply input events, chamber notes and sequencer steps in time order** (`OfflineRenderer`): CV changes reach the notes that follow them, exactly as in realtime. The physics still runs in a single pass (its collision times are sub-step exact only then) with its notes queued and merged by time.
+- **`AnalyserNode` polling is kept long**: the SENSE tracker reads a 32768-sample window (~743 ms) every 16 ms and analyses only what arrived since the previous poll, so main-thread stalls (measured: ~200 ms in headless Chromium under test load) lose no onsets. `cancelAndHoldAtTime`-style short clicks are avoided: the virtual voice's clap decays linearly over 40 ms.
+- **Headless Chromium's fake audio sink underruns under load**: the audio clock stalls ~10 ms at a time against the wall clock (measured in `tests/e2e/input.test.ts`). Takes still verify to < 1 ms because the schedule and the recording share the audio clock; wall-clock spacing is only judged over stall-free intervals.
 
 ## Getting Started
 
@@ -134,8 +147,12 @@ npm test
 | `... executable does not exist` | Playwright's browser is not downloaded, or the path in `TROPICFLOW_CHROMIUM` is wrong | `npx playwright install chromium` (`npm run setup`), or point `TROPICFLOW_CHROMIUM` at a real binary, or `TROPICFLOW_CHANNEL=chrome` to use your desktop Chrome |
 | `... missing shared libraries: libnss3.so, ...` | the browser binary is there but OS libraries are not (headless server / minimal container) | with sudo on Debian/Ubuntu: `sudo npx playwright install-deps chromium`. Without sudo: use a browser already installed (`TROPICFLOW_CHANNEL=chrome`), or run the tests in `mcr.microsoft.com/playwright:v1.56.1-noble` (Docker image with all libraries). |
 | E2E UI tests skipped | no production build | `npm run build` first (or `npm run test:e2e:ui`) |
+| A realtime e2e test reports `# SKIP ... The machine, not the engine, was late` | the main thread stalled during the take (loaded or virtualised machine) | nothing to fix in the code; run on a quieter machine for the full judgement |
+| MIDI / MIC greyed out in the app | insecure context, no Web MIDI / no MIDI service / no microphone | open via `http://localhost`, or use the computer keys / VOICE; `npm run check` reports the browser's capabilities |
 
-Always run tools through npm scripts (`npm run dev`, not a global `vite`). The unit tests (`npm run test:unit`, 49 tests incl. all physics) need no browser at all.
+`npm run check` also reports what the test browser can do for the hardware bridge: Web MIDI (API, service, inputs) and audio capture (API, inputs).
+
+Always run tools through npm scripts (`npm run dev`, not a global `vite`). The unit tests (`npm run test:unit`, 129 tests incl. all physics, MIDI parsing, pitch/onset detection) need no browser at all.
 
 ### Development Server
 
@@ -156,12 +173,16 @@ npm run preview
 
 The audio output is verified numerically, never by ear.
 
+**Realtime tests on a loaded machine.** Two kinds of e2e tests run the engine in realtime (live recording, live MIDI input). Their timing assertions are only meaningful if the machine kept up with the audio clock, so they measure it: every sequencer step records how far ahead of the audio clock it was scheduled (the clock works 100 ms ahead; healthy is 75-100 ms). If any step inside the judged window was scheduled *after* its time - the main thread stalled, the note was played late through no fault of the engine - the test is reported as **skipped with the measurement** (`# SKIP ... The machine, not the engine, was late.`), never as a failure. A take that verifies is still reported in full. Measured on a loaded 4-core VM: skipped in roughly 1 run in 5; on a desktop the window is never late. (`tests/e2e/lib/realtime.ts`)
+
 | Layer | Command | What it proves | Runtime |
 |---|---|---|---|
 | Unit | `npm run test:unit` | clock math (step/swing timing, grid quantization), patch resolution rules, WAV codec round-trips, analysis functions on synthetic signals, seeded PRNG, physics (analytic free-fall/bounce series, energy, no tunnelling, pegs/ramps/ball-ball, resting/sleep, determinism), collision mapping, chamber scheduling (queued drops, auto-drop per bar, quantize, snapshots, config round-trip) | ~1 s |
 | Unit (export) | `npm run test:unit` | Ogg page writer/reader (CRC vs a bitwise reference, lacing, granules from Opus TOC, continued packets, EOS), OpusHead/OpusTags, WebM/EBML demuxing (sized and unknown-size elements), range clamping / end snapping / edge fades / file names | part of the above |
 | Render E2E | `npm run test:e2e` | see below; also: the harness runs in a secure context and encodes a render to Ogg Opus of exactly the rendered length | ~10 s |
-| UI E2E | `npm run test:e2e:ui` | real clicks in the built app: start/stop, unplug/plug cables by mouse, bounce → export dialog → WAV + score download verifies, chamber DROP/CLEAR, canvas interactions (drop, pegs, ramps, wheel notes), mapper panel, bar-synced drops, export/import; **recording**: REC + START records a take whose notes verify against the live schedule (mean error < 1 ms), OGG export of a sub-range is valid Ogg Opus of the requested length and decodes in the browser, the MAX slider stops a take by itself, the MediaRecorder fallback (WebCodecs removed) is sample-aligned with the take (correlation > 0.99, lag < 2 ms), ABORT stops a running encode without a download, and without AudioWorklet REC is disabled with an explanation | ~60 s |
+| Sense E2E | `node --test tests/e2e/sense.test.ts` (part of `npm run test:e2e`) | the SENSE module in the built app: the virtual voice via the keys (tuner within 15 cents, PITCH CV -3 st for A3 over C4, a sung D4 transposes a struck C4 to D4 through a dragged PITCH CV cable, Space claps fire the chosen drum through ONSET TRIG without double triggers), the real `getUserMedia` status on this machine, a **stubbed microphone** (an oscillator: tracked, retuned, stopped; permission refused explained), and **Chromium's fake capture device** playing a WAV synthesised in the test (tones reported in order and in tune, claps firing the drum; the same file analysed offline gives every onset at its exact time) | ~35 s |
+| Input E2E | `node --test tests/e2e/input.test.ts` (part of `npm run test:e2e`) | the MIDI BRIDGE in the built app: **CV** (mod-wheel keys open the cutoff by the expected octaves, bend keys bend a held synth note and transpose a new one while the marimba stays put, unplugging the CV cable on the canvas disconnects the wheel, re-plugging by drag reconnects it), header click minimises / drag moves, STACK lays stairs, computer keys hold/release synth notes and light the on-screen keys, octave/velocity/accent/mod/bend keys, form fields and a disabled device do not play, on-screen keys by mouse, the real Web MIDI API's status on this machine, a **fake Web MIDI device** (installed with `addInitScript`: listing, messages, GM drum keys, hot-plug, input and channel filters), a performance injected with DOM timestamps while recording lands in the take at its scheduled times (mean error < 1 ms) with a constant latency, the log replays with exact spacing and BOUNCE renders it (WAV verifies against the SCORE), min/max cards keep their jacks patchable | ~45 s |
+| UI E2E | `npm run test:e2e:ui` (`npm run test:e2e` runs the e2e files one at a time: realtime-audio tests in parallel Chromium instances compete for CPU and lose timing accuracy; the whole e2e run takes ~4 min) | real clicks in the built app: start/stop, unplug/plug cables by mouse, bounce → export dialog → WAV + score download verifies, chamber DROP/CLEAR, canvas interactions (drop, pegs, ramps, wheel notes), mapper panel, bar-synced drops, export/import; **recording**: REC + START records a take whose notes verify against the live schedule (mean error < 1 ms), OGG export of a sub-range is valid Ogg Opus of the requested length and decodes in the browser, the MAX slider stops a take by itself, the MediaRecorder fallback (WebCodecs removed) is sample-aligned with the take (correlation > 0.99, lag < 2 ms), ABORT stops a running encode without a download, and without AudioWorklet REC is disabled with an explanation | ~60 s |
 
 `tests/e2e/render.test.ts` renders with the real engine inside headless Chromium and checks:
 
@@ -171,6 +192,9 @@ The audio output is verified numerically, never by ear.
 4. **Linearity** - the mixed pre-compressor bus equals the sum of the stems (> 80 dB SNR), proving routing/summing.
 5. **In-mix check** - the final master output (compressed, with delay) verified approximately (+-5 ms) per note, with the instrument identified by a rise in its frequency band.
 6. **Routing** - unplugging the drums' audio cable *or* trigger cable removes kick-band energy (> 12 dB) at the kick steps; an empty patch renders digital silence.
+7c. **Sensor** - the `sensor-follow` preset: tracked-pitch events transpose the sequencer's marimba from the moment they arrive (bar 2 at +2 st, bar 1 untouched), onset events fire the configured drum at their exact times with their strength as velocity (verified on the snare stem), no cables = no effect, the drum follows the sensor settings.
+7b. **CV** - the `midi-cv` preset: the mod wheel opens the synth filter (3-6 kHz band +11 dB against the same moment unpatched, identical before the wheel moves), a held note's spectral peak moves 261.6 → 293.7 Hz when the pitch wheel bends it, notes played while bent are transposed in the score (synth, and the marimba through an extra cable; not the synth when its cable is removed), deterministic.
+7a. **MIDI** - the `midi-performance` preset replays a scripted performance through the bridge: every note lands in the score at its script time with its velocity, `GATE OUT` cables gate which instruments respond, transpose shifts every frequency, each performed note verifies sample-accurately on its solo stem next to the groove, two renders are equivalent, a malformed script is rejected with a reason.
 7. **Chamber** - the `chamber-only` preset (3 balls, pegs, no sequencer) yields >= 20 physics-driven notes; each stem verifies every hit at its collision time (drums to ~0.01-0.5 ms); the browser's collision times equal an independent Node simulation; two renders are equivalent; `quantize: 1` puts every hit on the 16th grid; removing the chamber's trigger cable to the drums silences its drum hits; `chamber-groove` (auto-drop every bar over the default groove) verifies sequencer and chamber notes together per stem, reporting notes that are physically masked by a louder note of the same voice.
 8. **Golden** - `tests/golden/default-groove-1bar.wav` and `chamber-only-1bar.wav` must match (correlation > 0.999, windowed level diff < 1 dB, zero lag). Regenerate after an intentional sound change with `npm run golden:update`.
 
@@ -184,6 +208,12 @@ npm run render:wav -- --preset default-groove --bars 2 --out out/groove.wav --ta
 npm run render:wav -- --preset default-groove --bars 2 --ogg 128 --out out/groove.wav   # + out/groove.ogg
 npm run inspect:ogg -- out/groove.ogg
 npm run render:wav -- --list-presets
+
+# Replay a performance (the MIDI BRIDGE's log JSON, or a bounce score file) through the bridge
+npm run render:wav -- --preset default-groove --input performance.json --transpose 12 --out out/take.wav
+
+# Feed a recording (voice, claps) through the SENSE detectors offline: pitch -> PITCH CV, claps -> ONSET TRIG
+npm run render:wav -- --preset sensor-follow --sense voice.wav --out out/sense.wav
 
 # Render one instrument, dry, for sample-accurate checks
 npm run render:wav -- --preset default-groove --solo hihat --dry --out out/hat.wav --tap out/hat.tap.wav
@@ -216,5 +246,5 @@ For each scheduled note: found at its time (within the track's window), **masked
 
 ## Roadmap
 
-- Functional CV cables (pitch / cutoff / delay-time modulation).
+- SENSE tracker on an AudioWorklet with sample-exact onset times (phase 3b of [docs/HARDWARE_BRIDGE_PLAN.md](docs/HARDWARE_BRIDGE_PLAN.md)), MIDI clock sync, MIDI output.
 - Multiple chambers / ball-size-to-pitch mapping.
