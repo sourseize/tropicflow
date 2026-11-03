@@ -142,13 +142,21 @@ npm run dev          # or the Vite dev server with hot reload at http://localhos
 
   <section id="canvas">
     <h2 class="papaya">Modular canvas &amp; cables</h2><div class="stripe"></div>
-    <figure><img src="images/modular-canvas.png" alt="Eurorack-style modules with sagging patch cables"><figcaption>Nine modules: Tropic Clock, Mango Marimba, Tropical Tape Delay, Gravity Chamber, MIDI Bridge, Tomato Drums, Papaya Acid Lead, Jungle Master Bus, SENSE.</figcaption></figure>
+    <figure><img src="images/modular-canvas.png" alt="The default rack: four tropical modules and the gravity chamber with sagging patch cables"><figcaption>The default rack: Tropic Clock, Mango Marimba, Tomato Drums, Jungle Master Bus and the Gravity Chamber - a complete groove with room to spare.</figcaption></figure>
+    <div class="grid2">
+      <figure><img src="images/module-browser.png" alt="The ADD MODULE browser listing every module with its jacks, and the rack presets"><figcaption>ADD MODULE: every available module with its description and jacks; the PRESETS row loads the default rack or the FULL STUDIO.</figcaption></figure>
+      <figure><img src="images/modular-canvas-full.png" alt="The full studio: all nine modules on the canvas"><figcaption>FULL STUDIO: every module - adds the Papaya Acid Lead, the Tropical Tape Delay, the MIDI Bridge and SENSE.</figcaption></figure>
+    </div>
+    <figure><img src="images/canvas-empty.png" alt="An empty rack after CLEAR ALL"><figcaption>CLEAR ALL: nothing loaded; the transport, recorder and analyser still work, nothing sounds until a module is added.</figcaption></figure>
     <p>Drag a module by its title bar; <strong>click</strong> the title bar to minimise it to a single row (its jacks stay on the row and keep their cables), click again to maximise. Turn a knob by dragging up or down on it. Cables are <em>functional</em>: audio cables route signal, trigger cables decide which modules a source (the clock, the chamber, the MIDI bridge, the SENSE module) may fire, and <a href="#cv">CV cables</a> modulate.</p>
     <ul>
       <li><strong>Connect</strong>: drag from a jack to a compatible jack (output → input of the same family). Illegal pairs, e.g. a trigger into an audio input, are refused.</li>
       <li><strong>Unplug</strong>: double-click a jack.</li>
       <li><strong>STACK</strong> minimises every module and lays them out as stairs across the visible canvas (more columns when the window is short); <strong>MIN ALL</strong> / <strong>MAX ALL</strong> minimise or maximise everything in place.</li>
-      <li><strong>RESET PATCH</strong> restores the default routing and layout; <strong>DISCONNECT ALL</strong> clears every cable (silence!).</li>
+      <li><strong>RESET PATCH</strong> restores the default rack (clock, marimba, drums, master bus, gravity chamber) in its place with the default routing; <strong>DISCONNECT ALL</strong> clears every cable (silence!).</li>
+      <li><strong>ADD MODULE</strong> opens the module browser: every available module with its description and jacks; ADD puts one on the canvas (adding the same type twice gives a second, independent instance with its own jacks). The <strong>PRESETS</strong> row replaces the rack: DEFAULT RACK (5 modules) or FULL STUDIO (all 9). Only modules in the rack are loaded - their code is fetched when they are first added - so the fewer modules the lighter the app.</li>
+      <li><strong>×</strong> in a module's title bar removes it: its cables are cut and everything it held (audio nodes, timers, devices) is released. <strong>CLEAR ALL</strong> removes every module - the transport, the take recorder and the analyser keep working, but nothing sounds until a module is added again.</li>
+      <li>Open the app with <code>?rack=empty</code> to start with an empty rack, <code>?rack=full</code> for the full studio.</li>
     </ul>
     <div class="grid2">
       <figure><img src="images/module-minimised.png" alt="A minimised module: one row with the title and its jacks"><figcaption>A minimised module is one row; cables still reach its jacks.</figcaption></figure>

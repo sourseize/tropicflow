@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AudioEngine } from '../../core/audio/AudioEngine.ts';
 import { ChamberRenderer } from '../../core/canvas/ChamberRenderer.ts';
+import { EventBus } from '../../core/events/EventBus.ts';
+import type { ChamberEngine } from '../../core/physics/ChamberEngine.ts';
 
 interface Props {
+  /** The chamber this view draws and edits (one per GRAVITY CHAMBER card). */
+  chamber: ChamberEngine;
   width?: number;
   height?: number;
 }
@@ -21,7 +25,7 @@ const MIN_RAMP_LENGTH = 0.05;
  * The drawing follows the *audible* time (ctx.currentTime), which trails the
  * simulation by the clock's lookahead, so hits flash when they sound.
  */
-export const GravityChamberView: React.FC<Props> = ({ width = 296, height = 220 }) => {
+export const GravityChamberView: React.FC<Props> = ({ chamber, width = 296, height = 220 }) => {
   const engine = AudioEngine.getInstance();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dragPegRef = useRef<string | null>(null);
@@ -29,6 +33,8 @@ export const GravityChamberView: React.FC<Props> = ({ width = 296, height = 220 
   const draftRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const [hoverPeg, setHoverPeg] = useState<string | null>(null);
   const [hoverSegment, setHoverSegment] = useState<string | null>(null);
+  /** Ask for one frame (drawing a ramp / dragging a peg while the transport is stopped). */
+  const redrawRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -36,8 +42,15 @@ export const GravityChamberView: React.FC<Props> = ({ width = 296, height = 220 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     let raf = 0;
-    const draw = () => {
-      const chamber = engine.chamber;
+    let last = 0;
+    const FRAME_MS = 1000 / 30;
+    const draw = (time: number = 0) => {
+      // 30 fps while animating (the physics runs on the audio clock; the view only follows it).
+      if (time && time - last < FRAME_MS && engine.clock.getIsPlaying()) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      last = time;
       const now = engine.ctx.currentTime;
       const physics = chamber.physics.getConfig();
       const flashes = chamber.hitsAround(now).map((h) => ({
@@ -58,11 +71,24 @@ export const GravityChamberView: React.FC<Props> = ({ width = 296, height = 220 
         flashes,
         { dropX: chamber.getConfig().dropX, hoverPegId: hoverPeg, hoverSegmentId: hoverSegment, draft: draftRef.current }
       );
-      raf = requestAnimationFrame(draw);
+      // Animate only while the transport runs (balls move, hits flash); otherwise one frame per change.
+      if (engine.clock.getIsPlaying() && !document.hidden) raf = requestAnimationFrame(draw);
+      else raf = 0;
     };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, [engine, hoverPeg, hoverSegment]);
+    const frame = () => {
+      if (!raf) raf = requestAnimationFrame(draw);
+    };
+    redrawRef.current = frame;
+    frame();
+    const bus = EventBus.getInstance();
+    const unsubs = [bus.subscribe('AUDIO_STARTED', frame), bus.subscribe('AUDIO_STOPPED', frame), bus.subscribe('CHAMBER_CHANGED', frame)];
+    document.addEventListener('visibilitychange', frame);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      unsubs.forEach((u) => u());
+      document.removeEventListener('visibilitychange', frame);
+    };
+  }, [engine, chamber, hoverPeg, hoverSegment]);
 
   // Wheel over a peg/ramp changes its scale degree. Registered natively so
   // preventDefault can stop the page from scrolling (React's is passive).
@@ -71,25 +97,25 @@ export const GravityChamberView: React.FC<Props> = ({ width = 296, height = 220 
     if (!canvas) return;
     const onWheel = (e: WheelEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const cfg = engine.chamber.physics.getConfig();
+      const cfg = chamber.physics.getConfig();
       const x = ((e.clientX - rect.left) / rect.width) * cfg.width;
       const y = ((e.clientY - rect.top) / rect.height) * cfg.height;
       const delta = e.deltaY < 0 ? 1 : -1;
-      const peg = engine.chamber.physics.findPegAt(x, y);
-      const seg = peg ? null : engine.chamber.physics.findSegmentAt(x, y);
+      const peg = chamber.physics.findPegAt(x, y);
+      const seg = peg ? null : chamber.physics.findSegmentAt(x, y);
       if (!peg && !seg) return;
       e.preventDefault();
-      if (peg) engine.chamber.physics.setPegNote(peg.id, Math.max(-12, Math.min(24, peg.note + delta)));
-      if (seg) engine.chamber.physics.setSegmentNote(seg.id, Math.max(-12, Math.min(24, seg.note + delta)));
-      engine.chamber.updateConfig({});
+      if (peg) chamber.physics.setPegNote(peg.id, Math.max(-12, Math.min(24, peg.note + delta)));
+      if (seg) chamber.physics.setSegmentNote(seg.id, Math.max(-12, Math.min(24, seg.note + delta)));
+      chamber.updateConfig({});
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
-  }, [engine]);
+  }, [chamber]);
 
   const toChamber = (e: React.MouseEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const cfg = engine.chamber.physics.getConfig();
+    const cfg = chamber.physics.getConfig();
     return {
       x: ((e.clientX - rect.left) / rect.width) * cfg.width,
       y: ((e.clientY - rect.top) / rect.height) * cfg.height,
@@ -100,13 +126,13 @@ export const GravityChamberView: React.FC<Props> = ({ width = 296, height = 220 
     e.stopPropagation(); // keep the module card from dragging
     e.preventDefault();
     const p = toChamber(e);
-    const peg = engine.chamber.physics.findPegAt(p.x, p.y);
-    const seg = peg ? null : engine.chamber.physics.findSegmentAt(p.x, p.y);
+    const peg = chamber.physics.findPegAt(p.x, p.y);
+    const seg = peg ? null : chamber.physics.findSegmentAt(p.x, p.y);
     movedRef.current = false;
     if ((peg || seg) && (e.altKey || e.button === 2)) {
-      if (peg) engine.chamber.physics.removePeg(peg.id);
-      if (seg) engine.chamber.physics.removeSegment(seg.id);
-      engine.chamber.updateConfig({});
+      if (peg) chamber.physics.removePeg(peg.id);
+      if (seg) chamber.physics.removeSegment(seg.id);
+      chamber.updateConfig({});
       return;
     }
     if (peg) {
@@ -118,42 +144,45 @@ export const GravityChamberView: React.FC<Props> = ({ width = 296, height = 220 
       return;
     }
     if (e.shiftKey) {
-      const pegs = engine.chamber.physics.getPegs();
-      engine.chamber.physics.addPeg({ id: `peg-u${++pegCounter}`, x: p.x, y: p.y, radius: 0.04, note: pegs.length % 8 });
-      engine.chamber.updateConfig({});
+      const pegs = chamber.physics.getPegs();
+      chamber.physics.addPeg({ id: `peg-u${++pegCounter}`, x: p.x, y: p.y, radius: 0.04, note: pegs.length % 8 });
+      chamber.updateConfig({});
       return;
     }
-    engine.chamber.requestDrop(undefined, p.x);
+    chamber.requestDrop(undefined, p.x);
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
     const p = toChamber(e);
     if (draftRef.current) {
       draftRef.current = { ...draftRef.current, x2: p.x, y2: p.y };
+      redrawRef.current();
       return;
     }
     if (dragPegRef.current) {
       movedRef.current = true;
-      engine.chamber.physics.movePeg(dragPegRef.current, p.x, p.y);
+      chamber.physics.movePeg(dragPegRef.current, p.x, p.y);
+      redrawRef.current();
       return;
     }
-    const peg = engine.chamber.physics.findPegAt(p.x, p.y);
+    const peg = chamber.physics.findPegAt(p.x, p.y);
     setHoverPeg(peg?.id ?? null);
-    setHoverSegment(peg ? null : engine.chamber.physics.findSegmentAt(p.x, p.y)?.id ?? null);
+    setHoverSegment(peg ? null : chamber.physics.findSegmentAt(p.x, p.y)?.id ?? null);
   };
 
   const endDrag = () => {
     if (draftRef.current) {
       const d = draftRef.current;
       draftRef.current = null;
+      redrawRef.current();
       if (Math.hypot(d.x2 - d.x1, d.y2 - d.y1) >= MIN_RAMP_LENGTH) {
-        const segments = engine.chamber.physics.getSegments();
-        engine.chamber.physics.addSegment({ id: `ramp-u${++segmentCounter}`, ...d, thickness: 0.012, note: segments.length % 8 });
-        engine.chamber.updateConfig({});
+        const segments = chamber.physics.getSegments();
+        chamber.physics.addSegment({ id: `ramp-u${++segmentCounter}`, ...d, thickness: 0.012, note: segments.length % 8 });
+        chamber.updateConfig({});
       }
       return;
     }
-    if (dragPegRef.current && movedRef.current) engine.chamber.updateConfig({});
+    if (dragPegRef.current && movedRef.current) chamber.updateConfig({});
     dragPegRef.current = null;
   };
 

@@ -252,4 +252,11 @@ export class OscillatorVoice {
     param.exponentialRampToValueAtTime(value, at);
     param.exponentialRampToValueAtTime(0.00001, at + releaseTime);
   }
+
+  /** Release every held note and tear the internal graph down. */
+  public dispose(): void {
+    this.releaseAll(this.ctx.currentTime);
+    this.filterNode.disconnect();
+    this.outputNode.disconnect();
+  }
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AudioEngine } from '../../core/audio/AudioEngine.ts';
+import type { ChamberEngine } from '../../core/physics/ChamberEngine.ts';
 import {
   ROOT_NOTES,
   SCALES,
@@ -33,12 +33,11 @@ const CHOICE_LABELS: Record<SurfaceChoice, string> = {
   none: '— silent —',
 };
 
-/** Edits the collision -> note mapping of the live chamber. */
-export const ChamberMappingPanel: React.FC = () => {
-  const engine = AudioEngine.getInstance();
+/** Edits the collision -> note mapping of a chamber. */
+export const ChamberMappingPanel: React.FC<{ chamber: ChamberEngine }> = ({ chamber }) => {
   const [, bump] = useState({});
   const refresh = () => bump({});
-  const mapping = engine.chamber.getConfig().mapping;
+  const mapping = chamber.getConfig().mapping;
   const currentScale = scaleName(mapping.scale) ?? 'custom';
   const currentRoot = Object.entries(ROOT_NOTES).find(([, hz]) => Math.abs(hz - mapping.rootHz) < 0.01)?.[0] ?? 'custom';
 
@@ -56,7 +55,7 @@ export const ChamberMappingPanel: React.FC = () => {
               className={selectClass + ' max-w-[110px]'}
               value={surfaceChoice(mapping[key])}
               onChange={(e) => {
-                engine.chamber.updateMapping({ [key]: surfaceMappingFromChoice(e.target.value as SurfaceChoice) });
+                chamber.updateMapping({ [key]: surfaceMappingFromChoice(e.target.value as SurfaceChoice) });
                 refresh();
               }}
             >
@@ -79,7 +78,7 @@ export const ChamberMappingPanel: React.FC = () => {
             value={currentScale}
             onChange={(e) => {
               const scale = SCALES[e.target.value];
-              if (scale) engine.chamber.updateMapping({ scale: [...scale] });
+              if (scale) chamber.updateMapping({ scale: [...scale] });
               refresh();
             }}
           >
@@ -99,7 +98,7 @@ export const ChamberMappingPanel: React.FC = () => {
             value={currentRoot}
             onChange={(e) => {
               const hz = ROOT_NOTES[e.target.value];
-              if (hz) engine.chamber.updateMapping({ rootHz: hz });
+              if (hz) chamber.updateMapping({ rootHz: hz });
               refresh();
             }}
           >
@@ -122,7 +121,7 @@ export const ChamberMappingPanel: React.FC = () => {
           step={0.1}
           accentColor="#FF6B35"
           onChange={(val) => {
-            engine.chamber.updateMapping({ velocityScale: val });
+            chamber.updateMapping({ velocityScale: val });
             refresh();
           }}
         />
@@ -135,7 +134,7 @@ export const ChamberMappingPanel: React.FC = () => {
           unit="%"
           accentColor="#FF9E00"
           onChange={(val) => {
-            engine.chamber.updateMapping({ minVelocity: val / 100 });
+            chamber.updateMapping({ minVelocity: val / 100 });
             refresh();
           }}
         />
@@ -148,7 +147,7 @@ export const ChamberMappingPanel: React.FC = () => {
           unit="ms"
           accentColor="#FFB733"
           onChange={(val) => {
-            engine.chamber.updateMapping({ synthDuration: val / 1000 });
+            chamber.updateMapping({ synthDuration: val / 1000 });
             refresh();
           }}
         />

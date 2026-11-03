@@ -1,18 +1,24 @@
 /**
- * Realtime wiring of the input devices to the engine's InputBinding:
- * timestamp mapping (getOutputTimestamp polling), the computer keyboard,
- * Web MIDI, raw-byte injection (console / tests) and realtime replay of a
- * logged performance. Exposed as `window.tropicflowInput`.
+ * Realtime input services shared by the modules that own devices (MIDI
+ * BRIDGE: computer keys + Web MIDI; SENSE: microphone / virtual voice):
+ * timestamp mapping (getOutputTimestamp polling, ref-counted: it only runs
+ * while a device or a replay needs it), raw-byte injection (console / tests)
+ * and realtime replay of a logged performance. Engine-owned; exposed as
+ * `window.tropicflowInput`. The devices themselves are reached through the
+ * rack (`keyboard`, `midi`, `sensor` resolve the modules in the rack).
  */
-import { AudioEngine } from '../audio/AudioEngine.ts';
+import type { AudioEngine } from '../audio/AudioEngine.ts';
 import { isRealtimeContext } from '../audio/AudioContextManager.ts';
 import { type InputEvent, midiDeviceId } from './InputEvents.ts';
 import { type InputScript, ScriptPlayer, parseInputScript } from './InputLog.ts';
 import { DEFAULT_INPUT_LATENCY, TimestampMapper } from './TimestampMapper.ts';
-import { KeyboardDevice } from './keyboard/KeyboardDevice.ts';
+import type { KeyboardDevice } from './keyboard/KeyboardDevice.ts';
 import { MidiParser } from './midi/MidiParser.ts';
-import { WebMidiDevice, type WebMidiDeviceDeps } from './midi/WebMidiDevice.ts';
-import { SensorEngine, type SensorEngineDeps } from '../sense/SensorEngine.ts';
+import type { WebMidiDevice } from './midi/WebMidiDevice.ts';
+import type { SensorEngine } from '../sense/SensorEngine.ts';
+import type { InputService } from '../modules/ModuleContract.ts';
+import type { MidiModule } from '../../modules/midi/module.ts';
+import type { SensorModule } from '../../modules/sensor/module.ts';
 
 /** Replay tick (cheap: nothing happens unless a script is playing). */
 const POLL_MS = 25;
@@ -28,44 +34,61 @@ const REPLAY_AHEAD = 0.1;
 /** Device id for bytes injected through `send()` (console, e2e tests). */
 export const VIRTUAL_MIDI_DEVICE = midiDeviceId('virtual');
 
-export interface InputHubOptions {
-  keyboardTarget?: EventTarget;
-  requestMidiAccess?: WebMidiDeviceDeps['requestAccess'];
-  getUserMedia?: SensorEngineDeps['getUserMedia'];
-}
-
-export class InputHub {
-  private static instance: InputHub | null = null;
-
+export class InputHub implements InputService {
   public readonly mapper: TimestampMapper = new TimestampMapper();
-  public readonly keyboard: KeyboardDevice;
-  public readonly midi: WebMidiDevice;
-  /** SENSE module: microphone / virtual voice tracker. */
-  public readonly sensor: SensorEngine;
   private readonly engine: AudioEngine;
   private readonly virtualParser: MidiParser = new MidiParser(VIRTUAL_MIDI_DEVICE);
   private latency: number = DEFAULT_INPUT_LATENCY;
   private player: ScriptPlayer | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Devices holding the poll (see acquirePoll). */
+  private pollHolders = 0;
   private readonly replayListeners: Set<(remaining: number) => void> = new Set();
 
-  constructor(engine: AudioEngine, options: InputHubOptions = {}) {
+  constructor(engine: AudioEngine) {
     this.engine = engine;
-    const stamp = (ms: number) => this.stamp(ms);
-    const publish = (events: InputEvent[]) => this.publish(events);
-    this.keyboard = new KeyboardDevice({ stamp, publish, target: options.keyboardTarget });
-    this.midi = new WebMidiDevice({ stamp, publish, requestAccess: options.requestMidiAccess });
-    this.sensor = new SensorEngine(engine, { getUserMedia: options.getUserMedia });
   }
 
-  /** Realtime singleton bound to the UI engine (created on first use, keyboard enabled, polling started). */
-  public static getInstance(): InputHub {
-    if (!InputHub.instance) {
-      InputHub.instance = new InputHub(AudioEngine.getInstance());
-      InputHub.instance.keyboard.enable();
-      InputHub.instance.start();
-    }
-    return InputHub.instance;
+  // -------------------------------------------------------------------
+  // Devices live in their modules; these resolve them for panels, console and tests
+  // -------------------------------------------------------------------
+
+  private module<T>(type: 'midi' | 'sensor'): T {
+    const m = this.engine.rack.findByType(type);
+    if (!m) throw new Error(`no ${type === 'midi' ? 'MIDI BRIDGE' : 'SENSE'} module in the rack`);
+    return m as unknown as T;
+  }
+
+  /** The MIDI BRIDGE's computer-keys device (throws when the module is not in the rack). */
+  public get keyboard(): KeyboardDevice {
+    return this.module<MidiModule>('midi').keyboard;
+  }
+
+  /** The MIDI BRIDGE's Web MIDI device (throws when the module is not in the rack). */
+  public get midi(): WebMidiDevice {
+    return this.module<MidiModule>('midi').midi;
+  }
+
+  /** The SENSE module's tracker (throws when the module is not in the rack). */
+  public get sensor(): SensorEngine {
+    return this.module<SensorModule>('sensor').sensor;
+  }
+
+  // -------------------------------------------------------------------
+  // Polling: runs only while a device or a replay needs it
+  // -------------------------------------------------------------------
+
+  /** Hold the poll; the returned function releases it (idempotent). */
+  public acquirePoll(): () => void {
+    this.pollHolders++;
+    this.start();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.pollHolders--;
+      this.stopIfIdle();
+    };
   }
 
   /** Start polling the output timestamp and releasing replayed events. Idempotent. */
@@ -79,6 +102,18 @@ export class InputHub {
     if (this.timer === null) return;
     clearInterval(this.timer);
     this.timer = null;
+  }
+
+  public isPolling(): boolean {
+    return this.timer !== null;
+  }
+
+  private stopIfIdle(): void {
+    if (this.pollHolders === 0 && !this.player) this.stop();
+  }
+
+  public subscribe(listener: (event: InputEvent) => void): () => void {
+    return this.engine.input.bus.subscribe(listener);
   }
 
   /** User-chosen latency floor added to every device event (seconds). */
@@ -158,6 +193,7 @@ export class InputHub {
     this.player = null;
     this.engine.input.releaseAll(this.engine.ctx.currentTime);
     this.notifyReplay();
+    this.stopIfIdle();
   }
 
   public isReplaying(): boolean {
@@ -180,6 +216,7 @@ export class InputHub {
       if (this.player.isDone()) {
         this.player = null;
         this.notifyReplay();
+        this.stopIfIdle();
       } else if (events.length) {
         this.notifyReplay();
       }

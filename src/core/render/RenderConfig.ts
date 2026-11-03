@@ -8,6 +8,7 @@ import type { ChamberConfig } from '../physics/ChamberEngine.ts';
 import type { CollisionEvent } from '../physics/ChamberTypes.ts';
 import type { InputScript } from '../input/InputLog.ts';
 import type { BridgeSettings, SensorSettings } from '../input/InputBinding.ts';
+import type { RackModules } from '../modules/RackPreset.ts';
 
 /**
  * Everything needed to reproduce a render. Serialisable to JSON so the same
@@ -21,6 +22,14 @@ export interface RenderConfig {
   /** Extra seconds rendered after the last step so tails/delay ring out. */
   tailSeconds: number;
   pattern: Pattern;
+  /**
+   * The rack to render: modules by type with their ids and states (what
+   * BOUNCE captures - two marimbas, no synth, whatever is on the canvas).
+   * Omitted = the full studio (every built-in module); the legacy per-module
+   * fields below then set their parameters.
+   */
+  rack?: RackModules;
+  /** Cables between the rack's jacks. */
   cables: PatchCable[];
   /**
    * When set, only these tracks are allowed to sound. Used to render solo
@@ -29,6 +38,7 @@ export interface RenderConfig {
   solo?: string[];
   noiseSeed?: number;
   masterVolume?: number;
+  /** Legacy per-module parameters (applied to the first module of the type, after the rack's states). */
   synth?: Partial<SynthParams>;
   marimba?: Partial<MarimbaParams>;
   percussion?: Partial<PercussionParams>;

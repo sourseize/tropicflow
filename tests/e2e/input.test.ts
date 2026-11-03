@@ -111,7 +111,7 @@ describe('hardware bridge UI (built app in headless Chromium)', { skip: hasBuild
     p.on('console', (m) => {
       if (m.type() === 'error' && !m.text().includes('404')) errors.push(m.text());
     });
-    await p.goto(`http://localhost:${port}/`);
+    await p.goto(`http://localhost:${port}/?rack=full`);
     await p.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
     return p;
   };
@@ -312,7 +312,7 @@ describe('hardware bridge UI (built app in headless Chromium)', { skip: hasBuild
     try {
       await p2.addInitScript(FAKE_MIDI_INIT);
       p2.on('pageerror', (e) => errors.push(e.message));
-      await p2.goto(`http://localhost:${port}/`);
+      await p2.goto(`http://localhost:${port}/?rack=full`);
       await p2.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
       await p2.click('[data-testid="midi-enable"]');
       await p2.waitForFunction(() => window.tropicflowInput.midi.getStatus().state === 'ready');

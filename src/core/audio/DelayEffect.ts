@@ -78,4 +78,12 @@ export class DelayEffect {
     this.params.mix = Math.max(0, Math.min(1, wetLevel));
     this.outputNode.gain.setTargetAtTime(this.params.mix, this.ctx.currentTime, 0.02);
   }
+
+  /**
+   * Tear the internal graph down. The feedback loop (delay -> damp -> feedback
+   * -> delay) would otherwise keep every node alive for the life of the context.
+   */
+  public dispose(): void {
+    for (const n of [this.inputNode, this.delayNode, this.dampFilter, this.feedbackNode, this.outputNode]) n.disconnect();
+  }
 }

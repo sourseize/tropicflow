@@ -22,7 +22,9 @@
     "compare:wav": "node scripts/compare-wav.ts",
     "inspect:ogg": "node scripts/inspect-ogg.ts",
     "golden:update": "node scripts/render-wav.ts --preset default-groove --bars 1 --bit-depth 16 --out tests/golden/default-groove-1bar.wav && node scripts/render-wav.ts --preset chamber-only --bars 1 --bit-depth 16 --out tests/golden/chamber-only-1bar.wav",
-    "docs:shots": "node scripts/screenshots.mjs"
+    "docs:shots": "node scripts/screenshots.mjs",
+    "profile:modules": "node scripts/profile-modules.ts",
+    "test:performance": "node scripts/performance.ts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

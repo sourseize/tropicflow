@@ -132,7 +132,7 @@ export const TopBar: React.FC = () => {
           onClick={togglePlayback}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold font-mono text-xs tracking-wider whitespace-nowrap transition-all duration-200 shadow-lg ${
             isPlaying
-              ? 'bg-tomato-500 hover:bg-tomato-600 text-white shadow-glow-tomato animate-pulse'
+              ? 'bg-tomato-500 hover:bg-tomato-600 text-white shadow-glow-tomato'
               : 'bg-gradient-to-r from-mango-500 to-papaya-500 hover:from-mango-400 hover:to-papaya-400 text-jungle-950 shadow-glow-mango'
           }`}
         >

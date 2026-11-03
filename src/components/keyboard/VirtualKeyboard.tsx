@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { AudioEngine } from '../../core/audio/AudioEngine.ts';
 import { EventBus } from '../../core/events/EventBus.ts';
-import { InputHub } from '../../core/input/InputHub.ts';
 import { noteName } from '../../core/input/InputEvents.ts';
-import { KEY_LAYOUT, noteForOffset } from '../../core/input/keyboard/KeyMap.ts';
+import { INITIAL_KEYBOARD_STATE, KEY_LAYOUT, noteForOffset } from '../../core/input/keyboard/KeyMap.ts';
+import type { MidiModule } from '../../modules/midi/module.ts';
 
 /** Instrument chips = cables from the MIDI BRIDGE's GATE OUT (the canvas stays the source of truth). */
 const TARGETS = [
@@ -21,15 +21,18 @@ const GATE_OUT = 'midi-gate-out';
  */
 export const VirtualKeyboard: React.FC = () => {
   const engine = AudioEngine.getInstance();
-  const hub = InputHub.getInstance();
   const [, force] = useState({});
   const refresh = () => force({});
   const [lit, setLit] = useState<Set<number>>(() => new Set());
+  // The keys device belongs to the MIDI BRIDGE module; without one the board only lights up.
+  const bridge = engine.rack.findByType<MidiModule>('midi');
+  const keyboard = bridge?.keyboard ?? null;
+  const hasBridge = keyboard !== null;
 
   useEffect(() => {
     const unsubs = [
       EventBus.getInstance().subscribe('PATCH_CHANGED', refresh),
-      hub.keyboard.subscribe(refresh),
+      keyboard?.subscribe(refresh) ?? (() => {}),
       engine.input.subscribe((e) => {
         if (e.kind !== 'noteOn' && e.kind !== 'noteOff') return;
         setLit((prev) => {
@@ -41,13 +44,14 @@ export const VirtualKeyboard: React.FC = () => {
       }),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [engine, hub]);
+  }, [engine, keyboard]);
 
   const patched = new Set(engine.getPatch().filter((c) => c.fromPortId === GATE_OUT).map((c) => c.toPortId));
+  useEffect(() => engine.rack.subscribe((change) => (change === 'modules' || change === 'reset') && refresh()), [engine]);
   const toggleTarget = (portId: string) =>
     EventBus.getInstance().publish({ type: 'PATCH_TOGGLE_REQUEST', timestamp: performance.now(), fromPortId: GATE_OUT, toPortId: portId });
 
-  const state = hub.keyboard.getState();
+  const state = keyboard?.getState() ?? INITIAL_KEYBOARD_STATE;
   const keysOn = !engine.input.isDeviceMuted('keys');
 
   return (
@@ -60,6 +64,11 @@ export const VirtualKeyboard: React.FC = () => {
           </span>
         </div>
 
+        {!hasBridge ? (
+          <span className="text-[10px] font-mono text-cream-200/50 whitespace-nowrap px-2 py-1 rounded-lg border border-dashed border-jungle-800" data-testid="keys-no-bridge">
+add <span className="text-papaya-400">MIDI BRIDGE</span> to play
+          </span>
+        ) : (
         <div className="flex items-center bg-jungle-950 p-0.5 rounded-lg border border-jungle-800" title="Plug / unplug the MIDI BRIDGE's GATE OUT">
           {TARGETS.map((t) => {
             const on = patched.has(t.portId);
@@ -78,6 +87,7 @@ export const VirtualKeyboard: React.FC = () => {
             );
           })}
         </div>
+        )}
       </div>
 
       <div className="flex items-end h-24 gap-1 p-1 bg-jungle-950 rounded-lg border border-jungle-800 overflow-x-auto">
@@ -88,9 +98,9 @@ export const VirtualKeyboard: React.FC = () => {
             'data-testid': `key-${k.code}`,
             'data-note': note,
             'data-active': isPressed ? 'true' : 'false',
-            onMouseDown: (e: React.MouseEvent) => hub.keyboard.press(k.code, e.timeStamp, e.shiftKey),
-            onMouseUp: (e: React.MouseEvent) => hub.keyboard.release(k.code, e.timeStamp),
-            onMouseLeave: (e: React.MouseEvent) => hub.keyboard.release(k.code, e.timeStamp),
+            onMouseDown: (e: React.MouseEvent) => keyboard?.press(k.code, e.timeStamp, e.shiftKey),
+            onMouseUp: (e: React.MouseEvent) => keyboard?.release(k.code, e.timeStamp),
+            onMouseLeave: (e: React.MouseEvent) => keyboard?.release(k.code, e.timeStamp),
           };
           if (k.black) {
             return (

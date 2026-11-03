@@ -1,0 +1,93 @@
+{
+  "recordedAt": "2026-11-02T19:01:05.486Z",
+  "browser": "141.0.7390.37",
+  "playMs": 4000,
+  "reports": [
+    {
+      "scenario": "all",
+      "idle": {
+        "label": "all:idle",
+        "at": 2589.284342,
+        "audioHandlers": 25,
+        "audioWorkletProcessors": 0,
+        "jsHeapUsed": 4160748,
+        "jsHeapTotal": 5120000,
+        "domNodes": 1491,
+        "jsEventListeners": 310,
+        "arrayBufferContents": 6,
+        "taskDuration": 0.607348,
+        "scriptDuration": 0.029934,
+        "cpu": {
+          "renderer": 1.28,
+          "gpu": 0.99,
+          "audioService": 0.07,
+          "browser": 0.61
+        },
+        "chunks": {
+          "index-9wGomhCl.js": 415371
+        },
+        "rack": null
+      },
+      "running": {
+        "label": "all:running",
+        "at": 6899.300248,
+        "audioHandlers": 51,
+        "audioWorkletProcessors": 0,
+        "jsHeapUsed": 4560532,
+        "jsHeapTotal": 5382144,
+        "domNodes": 1491,
+        "jsEventListeners": 318,
+        "arrayBufferContents": 6,
+        "taskDuration": 3.371012,
+        "scriptDuration": 0.186972,
+        "cpu": {
+          "renderer": 4.9399999999999995,
+          "gpu": 5.2,
+          "audioService": 0.14,
+          "browser": 0.65
+        },
+        "chunks": {
+          "index-9wGomhCl.js": 415371
+        },
+        "rack": null
+      },
+      "afterStop": {
+        "label": "all:stopped",
+        "at": 7783.211572,
+        "audioHandlers": 25,
+        "audioWorkletProcessors": 0,
+        "jsHeapUsed": 4604048,
+        "jsHeapTotal": 5382144,
+        "domNodes": 1491,
+        "jsEventListeners": 310,
+        "arrayBufferContents": 6,
+        "taskDuration": 3.994102,
+        "scriptDuration": 0.213645,
+        "cpu": {
+          "renderer": 5.72,
+          "gpu": 6.07,
+          "audioService": 0.15,
+          "browser": 0.66
+        },
+        "chunks": {
+          "index-9wGomhCl.js": 415371
+        },
+        "rack": null
+      },
+      "playing": {
+        "from": "all:idle",
+        "to": "all:running",
+        "wallSeconds": 4.310015905999999,
+        "mainThreadBusy": 0.6412189792971962,
+        "scriptBusy": 0.036435596393365154,
+        "rendererCpu": 0.8491848011291306,
+        "gpuCpu": 0.9767945390037269,
+        "audioServiceCpu": 0.016241239365857696,
+        "heapDelta": 399784,
+        "audioHandlersDelta": 26,
+        "stepsScheduled": 33,
+        "minStepMargin": -0.010952380952381047
+      }
+    }
+  ]
+}

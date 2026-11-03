@@ -1,3 +1,4 @@
+/** Built-in module types; any registered plugin type is valid (see core/modules). */
 export type ModuleType =
   | 'clock'
   | 'synth'
@@ -8,7 +9,12 @@ export type ModuleType =
   | 'chamber'
   | 'midi'
   | 'sensor'
-  | 'master';
+  | 'master'
+  | (string & {});
+
+/** How a CV jack's value is interpreted (see core/cv/CvBus for the scaling). */
+export type CvSourceKind = 'pitch' | 'control';
+export type CvTargetKind = 'pitch' | 'cutoff' | 'time';
 
 export type PortType = 'audio-out' | 'audio-in' | 'trigger-out' | 'trigger-in' | 'cv-out' | 'cv-in';
 
@@ -18,6 +24,8 @@ export interface ModulePort {
   type: PortType;
   direction: 'in' | 'out';
   color: string;
+  /** CV jacks: how the value is interpreted. */
+  cvKind?: CvSourceKind | CvTargetKind;
 }
 
 export interface GraphNode {

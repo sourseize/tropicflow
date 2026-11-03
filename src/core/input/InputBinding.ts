@@ -1,9 +1,9 @@
 /**
  * Turns InputEvents into engine notes: the MIDI BRIDGE's "GATE OUT".
  *
- * Every note-on is offered to all three instrument modules; the cables from
- * `midi-gate-out` decide which of them sound (AudioEngine.playNote gates by
- * trigger source, exactly like the clock and the chamber). The synth holds
+ * Every note-on is fired from the `midi-gate-out` jack; the cables from it
+ * decide which modules sound (AudioEngine.playNote routes by jack, exactly
+ * like the clock and the chamber). The synth holds
  * its note until the matching note-off; marimba and drums are one-shots.
  *
  * Same code for realtime (devices publish into `bus`) and offline rendering
@@ -45,7 +45,8 @@ export interface BridgeSettings {
 
 export const DEFAULT_BRIDGE_SETTINGS: BridgeSettings = { transpose: 0, a4Hz: 440, bendRange: 2 };
 
-/** CV jacks of the MIDI BRIDGE. */
+/** Jacks of the MIDI BRIDGE (canonical instance). */
+export const MIDI_GATE_OUT = 'midi-gate-out';
 export const MIDI_PITCH_CV = 'midi-pitch-cv';
 export const MIDI_MOD_CV = 'midi-mod-cv';
 /** Jacks of the SENSE module. */
@@ -179,13 +180,13 @@ export class InputBinding {
         if (muted) break;
         const id = holdId(event.device, event.note);
         const frequency = this.frequencyFor(event.note);
-        this.engine.playNote({ track: 'marimba', frequency, velocity: event.velocity }, event.time, 'midi');
-        this.engine.playNote({ track: 'synth', frequency, velocity: event.velocity }, event.time, 'midi', { holdId: id });
+        this.engine.playNote({ track: 'marimba', frequency, velocity: event.velocity }, event.time, MIDI_GATE_OUT);
+        this.engine.playNote({ track: 'synth', frequency, velocity: event.velocity }, event.time, MIDI_GATE_OUT, { holdId: id });
         const drum = GM_DRUM_MAP[event.note];
         if (drum) {
           const cmd: NoteCommand = { track: drum.track, velocity: event.velocity };
           if (drum.track === 'hihat') cmd.open = drum.open ?? false;
-          this.engine.playNote(cmd, event.time, 'midi');
+          this.engine.playNote(cmd, event.time, MIDI_GATE_OUT);
         }
         this.activity.held.set(id, event.note);
         this.activity.lastNote = { note: event.note, velocity: event.velocity, device: event.device, time: event.time };
@@ -229,9 +230,9 @@ export class InputBinding {
         const drum = this.sensorSettings.onsetDrum;
         const drumCmd: NoteCommand = { track: drum, velocity };
         if (drum === 'hihat') drumCmd.open = false;
-        this.engine.playNote(drumCmd, when, 'sensor');
-        this.engine.playNote({ track: 'marimba', frequency, velocity }, when, 'sensor');
-        this.engine.playNote({ track: 'synth', frequency, velocity, duration: this.sensorSettings.onsetSynthDuration }, when, 'sensor');
+        this.engine.playNote(drumCmd, when, SENSOR_ONSET_OUT);
+        this.engine.playNote({ track: 'marimba', frequency, velocity }, when, SENSOR_ONSET_OUT);
+        this.engine.playNote({ track: 'synth', frequency, velocity, duration: this.sensorSettings.onsetSynthDuration }, when, SENSOR_ONSET_OUT);
         break;
       }
     }

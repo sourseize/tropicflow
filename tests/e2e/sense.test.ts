@@ -103,7 +103,7 @@ describe('SENSE module UI (built app in headless Chromium)', { skip: hasBuild ? 
     p.on('console', (m) => {
       if (m.type() === 'error' && !m.text().includes('404')) errors.push(m.text());
     });
-    await p.goto(`http://localhost:${port}/`);
+    await p.goto(`http://localhost:${port}/?rack=full`);
     await p.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
     return p;
   };
@@ -219,7 +219,9 @@ describe('SENSE module UI (built app in headless Chromium)', { skip: hasBuild ? 
     await page.dblclick('[data-port-id="perc-trig-in"]');
     await page.click('[data-testid="sense-voice"]');
     assert.equal(await page.evaluate(() => window.tropicflowInput.sensor.isActive()), false);
-    await page.click('text=RESET PATCH');
+    // Back to the full studio (RESET PATCH would load the smaller default rack, without SENSE).
+    await page.evaluate(() => window.tropicflowEngine.loadPreset('full'));
+    await page.waitForSelector('[data-testid="sense-mic"]');
   });
 
   test('real microphone API in this environment: MIC ON reports a readable status and never hangs', async () => {
@@ -238,7 +240,7 @@ describe('SENSE module UI (built app in headless Chromium)', { skip: hasBuild ? 
     try {
       await p2.addInitScript(FAKE_MIC_INIT);
       p2.on('pageerror', (e) => errors.push(e.message));
-      await p2.goto(`http://localhost:${port}/`);
+      await p2.goto(`http://localhost:${port}/?rack=full`);
       await p2.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
       await p2.click('[data-testid="sense-mic"]');
       await p2.waitForFunction(() => window.tropicflowInput.sensor.getStatus().mic === 'ready', undefined, { timeout: 5000 });
@@ -258,7 +260,8 @@ describe('SENSE module UI (built app in headless Chromium)', { skip: hasBuild ? 
         return hz !== null && Math.abs(1200 * Math.log2(hz / 329.63)) < 15;
       }, undefined, { timeout: 3000 });
       r = await reading(p2);
-      assert.match((await p2.textContent('[data-testid="sense-note"]')) ?? '', /E4/);
+      // The panel follows the tracker on its own (throttled) notifications: wait for it.
+      await p2.waitForFunction(() => document.querySelector('[data-testid="sense-note"]')?.textContent?.includes('E4'), undefined, { timeout: 2000 });
       const stopped = await p2.evaluate(() => new Promise<boolean>((resolve) => {
         const track = (window as unknown as { __fakeMic: { ctx: AudioContext } }).__fakeMic;
         void track;
@@ -281,7 +284,7 @@ describe('SENSE module UI (built app in headless Chromium)', { skip: hasBuild ? 
           throw Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
         };
       });
-      await p3.goto(`http://localhost:${port}/`);
+      await p3.goto(`http://localhost:${port}/?rack=full`);
       await p3.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
       await p3.click('[data-testid="sense-mic"]');
       await p3.waitForFunction(() => window.tropicflowInput.sensor.getStatus().mic === 'denied');
@@ -306,7 +309,7 @@ describe('SENSE module UI (built app in headless Chromium)', { skip: hasBuild ? 
       await ctx.grantPermissions(['microphone']);
       const p = await ctx.newPage();
       p.on('pageerror', (e) => errors.push(e.message));
-      await p.goto(`http://localhost:${port}/`);
+      await p.goto(`http://localhost:${port}/?rack=full`);
       await p.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
       await dragCable(p, 'sns-onset-out', 'perc-trig-in');
       await p.evaluate(() => {

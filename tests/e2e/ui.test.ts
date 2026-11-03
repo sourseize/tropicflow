@@ -58,7 +58,7 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
     page.on('console', (m) => {
       if (m.type() === 'error' && !m.text().includes('404')) errors.push(m.text());
     });
-    await page.goto(`http://localhost:${port}/`);
+    await page.goto(`http://localhost:${port}/?rack=full`);
     await page.waitForFunction(() => typeof window.tropicflowEngine !== 'undefined');
   });
 
@@ -202,7 +202,9 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
   });
 
   test('collision mapper panel: remapping the floor to snare changes what a floor hit plays', async () => {
-    await page.click('text=RESET PATCH'); // earlier tests unplugged the chamber -> drums cable
+    // Earlier tests unplugged the chamber -> drums cable: back to the full studio (RESET PATCH loads the smaller default rack).
+    await page.evaluate(() => window.tropicflowEngine.loadPreset('full'));
+    await page.waitForSelector('[data-testid="chamber-clear"]');
     await page.click('[data-testid="chamber-clear"]');
     await page.click('[data-testid="chamber-mapping-toggle"]');
     await page.selectOption('[data-testid="mapping-floor"]', 'snare');
@@ -539,7 +541,7 @@ describe('UI (built app in headless Chromium)', { skip: hasBuild ? false : `no b
         Object.defineProperty(BaseAudioContext.prototype, 'audioWorklet', { configurable: true, get: () => undefined });
         (window as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = undefined;
       });
-      await p2.goto(`http://localhost:${port}/`);
+      await p2.goto(`http://localhost:${port}/?rack=full`);
       await p2.waitForFunction(() => typeof window.tropicflowEngine !== 'undefined');
       assert.ok(await p2.isDisabled('[data-testid="rec-arm"]'));
       assert.match((await p2.textContent('[data-testid="rec-status"]')) ?? '', /NO AUDIOWORKLET/);

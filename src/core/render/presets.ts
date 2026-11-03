@@ -1,5 +1,6 @@
 import { DEFAULT_PATTERN, clonePattern } from '../audio/AudioEngine.ts';
 import { INITIAL_CABLES } from '../graph/NodeGraph.ts';
+import { FULL_RACK } from '../modules/RackPreset.ts';
 import type { RenderConfig } from './RenderConfig.ts';
 import type { InputScript } from '../input/InputLog.ts';
 
@@ -11,6 +12,8 @@ export function defaultGrooveConfig(overrides: Partial<RenderConfig> = {}): Rend
     sampleRate: 48000,
     tailSeconds: 1.0,
     pattern: clonePattern(DEFAULT_PATTERN),
+    // The full studio, in rack format; the legacy per-module fields of a preset refine it.
+    rack: { modules: FULL_RACK.modules.map((m) => ({ ...m, position: { ...m.position } })) },
     cables: INITIAL_CABLES.map((c) => ({ ...c })),
     ...overrides,
   };

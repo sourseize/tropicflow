@@ -1,21 +1,35 @@
 import { AudioContextManager, isRealtimeContext } from './AudioContextManager.ts';
 import { MasterBus } from './MasterBus.ts';
-import { DelayEffect } from './DelayEffect.ts';
-import { OscillatorVoice } from './OscillatorVoice.ts';
-import { MarimbaModel } from './MarimbaModel.ts';
-import { DEFAULT_NOISE_SEED, PercussionEngine } from './PercussionEngine.ts';
+import type { DelayEffect } from './DelayEffect.ts';
+import type { OscillatorVoice } from './OscillatorVoice.ts';
+import type { MarimbaModel } from './MarimbaModel.ts';
+import type { PercussionEngine } from './PercussionEngine.ts';
 import { AudioClock } from './AudioClock.ts';
 import { EventBus } from '../events/EventBus.ts';
 import type { StepTriggeredEvent } from '../events/DomainEvents.ts';
 import type { GraphNode, PatchCable } from '../graph/GraphTypes.ts';
-import { INITIAL_CABLES, INITIAL_NODES } from '../graph/NodeGraph.ts';
 import { resolvePatch } from '../graph/PatchRouter.ts';
-import { type ChamberConfig, ChamberEngine, type ChamberNote } from '../physics/ChamberEngine.ts';
+import type { ChamberConfig, ChamberEngine, ChamberNote } from '../physics/ChamberEngine.ts';
 import type { NoteCommand } from '../physics/CollisionMapper.ts';
 import type { CollisionEvent } from '../physics/ChamberTypes.ts';
 import { type Take, TakeRecorder, type TakeStopReason } from '../record/TakeRecorder.ts';
 import { InputBinding } from '../input/InputBinding.ts';
-import { type CvChange, CvBus } from '../cv/CvBus.ts';
+import { InputHub } from '../input/InputHub.ts';
+import { type CvChange, CvBus, cvKinds } from '../cv/CvBus.ts';
+import type { ModuleHost, ModuleInstance, NoteExtra, NoteSource, TriggerHandler } from '../modules/ModuleContract.ts';
+import { portIdFor } from '../modules/ModuleContract.ts';
+import { ModuleRack } from '../modules/ModuleRack.ts';
+import { moduleRegistry } from '../modules/ModuleRegistry.ts';
+import { DEFAULT_RACK, FULL_RACK, RACK_PRESETS, type RackPreset, clonePreset } from '../modules/RackPreset.ts';
+import { ResourceLedger } from '../modules/ResourceLedger.ts';
+// The built-in plugins register themselves on the application registry.
+import '../../modules/index.ts';
+import { CLOCK_TRIG_OUT } from '../../modules/clock/descriptor.ts';
+import type { MarimbaModule } from '../../modules/marimba/module.ts';
+import type { PercussionModule } from '../../modules/percussion/module.ts';
+import type { SynthModule } from '../../modules/synth/module.ts';
+import type { DelayModule } from '../../modules/delay/module.ts';
+import type { ChamberModule } from '../../modules/chamber/module.ts';
 
 export type TrackId = 'kick' | 'snare' | 'hihat' | 'marimba' | 'synth';
 export type Pattern = Record<TrackId, boolean[]>;
@@ -54,9 +68,9 @@ export interface FiredNote {
  * Who asked for a note. All of them are trigger sources gated by cables from
  * their jack: the clock, the chamber, the MIDI BRIDGE ('midi': hardware MIDI
  * or the computer keys) and the SENSE module ('sensor': microphone / virtual
- * voice, phase 3).
+ * voice). Defined by the module contract; re-exported for existing imports.
  */
-export type NoteSource = 'sequencer' | 'chamber' | 'midi' | 'sensor';
+export type { NoteSource };
 
 /** Every note the engine plays, from any source (used to build render scores). */
 export interface PlayedNote extends FiredNote {
@@ -69,132 +83,239 @@ export interface PlayedNote extends FiredNote {
 export type StepListener = (stepIndex: number, audioTime: number, fired: FiredNote[]) => void;
 export type NoteListener = (note: PlayedNote) => void;
 
-/** Trigger sources: which output jack drives which modules. */
-const TRIGGER_SOURCES: Record<string, NoteSource> = {
-  'clk-trig-1': 'sequencer',
-  'chm-trig-out': 'chamber',
-  'midi-gate-out': 'midi',
-  'sns-onset-out': 'sensor',
-};
+/** A trigger-in jack patched from a trigger-out jack. */
+interface TriggerTarget {
+  instance: ModuleInstance;
+  portId: string;
+  handler: TriggerHandler;
+}
+
+export type PatchListener = (cables: PatchCable[]) => void;
+
+/** A chamber note held back for an offline render, with the chamber it came from. */
+export interface QueuedChamberNote {
+  note: ChamberNote;
+  module: ChamberModule;
+}
 
 export interface AudioEngineOptions {
   ctx: BaseAudioContext;
   /** Publish STEP_TRIGGERED / NOTE_ON events on the global EventBus (UI only). */
   publishEvents?: boolean;
   noiseSeed?: number;
-  nodes?: GraphNode[];
+  /** Cables of the default rack to start with (default: the default patch). */
   cables?: PatchCable[];
   /** Connect the master bus to ctx.destination (default true). */
   connectToDestination?: boolean;
   chamber?: Partial<ChamberConfig>;
+  /**
+   * The initial rack: 'default' (RESET PATCH's rack), 'empty' (nothing loaded,
+   * no module code fetched), a preset name (see RACK_PRESETS) or an explicit
+   * preset (renders). `cables` / `noiseSeed` / `chamber` apply on top.
+   */
+  rack?: 'default' | 'empty' | string | RackPreset;
 }
 
 /**
- * Wires voices, effects, clock and patch routing together.
+ * Wires the transport, the output stage and the patch routing together.
  *
  * `AudioEngine.getInstance()` returns the realtime singleton used by the UI.
  * `new AudioEngine({ ctx: offlineCtx })` builds an independent instance on an
  * OfflineAudioContext for deterministic rendering (see core/render).
+ *
+ * The modules are plugin instances in `rack` (core/modules). Routing is
+ * generic: audio cables connect the AudioNodes the instances expose per
+ * jack, trigger cables decide which trigger-in handlers a trigger-out jack
+ * fires, CV cables feed the instances' `setCvTarget`. The engine itself owns
+ * only what the fixed panels need with any rack: the transport clock, the
+ * master bus, the take recorder and the input binding.
  */
 export class AudioEngine {
   private static instance: AudioEngine | null = null;
 
   public readonly ctx: BaseAudioContext;
+  /** The live modules (plugin instances), their resource ledgers and canvas nodes. */
+  public readonly rack: ModuleRack;
+  /** The output stage (engine-owned: the MASTER module is the jack into it). */
   public readonly masterBus: MasterBus;
-  public readonly delay: DelayEffect;
-  public readonly synth: OscillatorVoice;
-  public readonly marimba: MarimbaModel;
-  public readonly drums: PercussionEngine;
+  /** The transport (engine-owned: the CLOCK module is its trigger jack). */
   public readonly clock: AudioClock;
-  public readonly chamber: ChamberEngine;
+  /**
+   * Resolves once the initial rack is loaded (module code is fetched on
+   * demand, so building the default rack is asynchronous). Await it before
+   * using the modules: `main.tsx` does, and so does the offline renderer.
+   */
+  public readonly ready: Promise<void>;
   /** Taps the master output to record what you hear (see core/record). */
   public readonly recorder: TakeRecorder;
-  /** MIDI BRIDGE: InputEvents (MIDI, computer keys, scripts) -> notes, gated by cables (see core/input). */
+  /** InputEvents (MIDI, computer keys, sensor, scripts) -> notes and CV, gated by cables (see core/input). */
   public readonly input: InputBinding;
+  /** Input services for the modules that own devices: timestamp mapping, replay, byte injection (`window.tropicflowInput`). */
+  public readonly inputHub: InputHub;
   /** CV routing: cv-out jacks -> cv-in jacks through cables (see core/cv). */
   public readonly cv: CvBus = new CvBus();
   private readonly eventBus: EventBus;
   private readonly publishEvents: boolean;
 
   private pattern: Pattern = clonePattern(DEFAULT_PATTERN);
-  private nodes: GraphNode[];
+  private nodes: GraphNode[] = [];
   private cables: PatchCable[] = [];
-  /** Per trigger source, the modules whose trigger input is patched to it. */
-  private triggerTargets: Map<NoteSource, Set<string>> = new Map();
+  /** Audio connections made for the current patch (disconnected individually on re-patch). */
+  private audioLinks: Array<{ from: AudioNode; to: AudioNode }> = [];
+  /** Per trigger-out jack, the trigger-in handlers patched to it. */
+  private triggerLinks: Map<string, TriggerTarget[]> = new Map();
+  /** Owner instance of every jack in the rack. */
+  private portOwners: Map<string, ModuleInstance> = new Map();
   /** When non-null, only these tracks may sound (solo/mute for stem renders). */
   private trackMask: Set<TrackId> | null = null;
 
   private readonly stepListeners: Set<StepListener> = new Set();
   private readonly noteListeners: Set<NoteListener> = new Set();
+  private readonly patchListeners: Set<PatchListener> = new Set();
 
   /** When set, chamber notes are queued here instead of played (offline time-ordered replay). */
-  private chamberQueue: ChamberNote[] | null = null;
+  private chamberQueue: QueuedChamberNote[] | null = null;
   /** The clock's step hook into the chamber (bar-synced drops); the offline renderer pre-drives it itself. */
   public chamberStepHook: boolean = true;
   /** REC checkbox: record whenever the transport runs. */
   private recordArmed = false;
   private lastTake: Take | null = null;
 
-  private readonly outputPorts: Map<string, AudioNode>;
-  private readonly inputPorts: Map<string, AudioNode>;
-  private readonly triggerInputPorts: Map<string, string>;
-
   constructor(options: AudioEngineOptions) {
     this.ctx = options.ctx;
     this.publishEvents = options.publishEvents ?? false;
     this.eventBus = EventBus.getInstance();
-    this.nodes = options.nodes ?? INITIAL_NODES;
 
     this.masterBus = new MasterBus(this.ctx, options.connectToDestination ?? true);
-    this.delay = new DelayEffect(this.ctx);
-    this.synth = new OscillatorVoice(this.ctx);
-    this.marimba = new MarimbaModel(this.ctx);
-    this.drums = new PercussionEngine(this.ctx, options.noiseSeed ?? DEFAULT_NOISE_SEED);
     this.clock = new AudioClock({ getTime: () => this.ctx.currentTime });
-    this.chamber = new ChamberEngine(options.chamber ?? {}, {
-      sink: (note) => this.playChamberNote(note),
-      quantizer: (time, strength) => this.clock.quantizeTime(time, strength),
-      onChanged: () => {
-        if (this.publishEvents) this.eventBus.publish({ type: 'CHAMBER_CHANGED', timestamp: performance.now() });
-      },
-    });
-
     this.recorder = new TakeRecorder(this.ctx, this.masterBus.outputNode, {
       onMaxLengthReached: (take) => this.storeTake(take, 'max-length'),
     });
     this.input = new InputBinding(this);
+    this.inputHub = new InputHub(this);
 
-    this.outputPorts = new Map<string, AudioNode>([
-      ['mrm-audio-out', this.marimba.outputNode],
-      ['syn-audio-out', this.synth.outputNode],
-      ['perc-audio-out', this.drums.outputNode],
-      ['del-wet-out', this.delay.outputNode],
-    ]);
-    this.inputPorts = new Map<string, AudioNode>([
-      ['del-audio-in', this.delay.inputNode],
-      ['mst-in-l', this.masterBus.inputNode],
-    ]);
-    this.triggerInputPorts = new Map<string, string>([
-      ['mrm-trig-in', 'marimba'],
-      ['perc-trig-in', 'percussion'],
-      ['syn-gate-in', 'synth'],
-    ]);
-
-    this.applyPatch(options.cables ?? INITIAL_CABLES);
+    // Build the default rack; construction-time options travel as module state.
+    this.rack = new ModuleRack(moduleRegistry, (id, type) => this.makeHost(id, type), true);
+    const preset = AudioEngine.initialPreset(options.rack);
+    for (const m of preset.modules) {
+      if (m.type === 'percussion' && options.noiseSeed !== undefined) m.state = { ...m.state, noiseSeed: options.noiseSeed };
+      if (m.type === 'chamber' && options.chamber) m.state = { ...m.state, config: options.chamber };
+    }
+    if (options.cables) preset.cables = options.cables.map((c) => ({ ...c }));
+    this.rack.subscribe((change) => {
+      if (change === 'modules' || change === 'reset') this.onRackChanged();
+    });
     this.bindClock();
-    // SWING CV out: the clock's swing (0..0.5) as a 0..1 control.
-    this.clock.subscribeSwing((swing) => this.setCvSource('clk-swing-1', swing / 0.5, this.ctx.currentTime));
+    this.ready = this.loadRack(preset);
   }
 
-  /** Realtime singleton bound to the browser AudioContext. */
-  public static getInstance(): AudioEngine {
+  private static initialPreset(rack: AudioEngineOptions['rack']): RackPreset {
+    if (rack === 'empty') return { modules: [], cables: [] };
+    if (rack === undefined || rack === 'default') return clonePreset(DEFAULT_RACK);
+    if (typeof rack === 'string') {
+      const named = RACK_PRESETS[rack];
+      if (!named) throw new Error(`unknown rack preset "${rack}" (known: ${Object.keys(RACK_PRESETS).join(', ')})`);
+      return clonePreset(named.preset);
+    }
+    return clonePreset(rack);
+  }
+
+  /** The services a module instance gets from the engine, plus its own resource ledger. */
+  private makeHost(id: string, type: string): { host: ModuleHost; ledger: ResourceLedger } {
+    const ledger = new ResourceLedger(this.ctx);
+    const host: ModuleHost = {
+      ctx: this.ctx,
+      realtime: isRealtimeContext(this.ctx),
+      publishEvents: this.publishEvents,
+      events: this.eventBus,
+      ledger,
+      clock: this.clock,
+      masterBus: this.masterBus,
+      input: this.inputHub,
+      portId: (specId) => portIdFor(type, id, specId),
+      resume: () => this.resume(),
+      playNote: (cmd, when, fromPortId, extra) => this.playNote(cmd, when, fromPortId, extra),
+      setCv: (portId, value, when) => this.setCvSource(portId, value, when),
+      quantizeTime: (time, strength) => this.clock.quantizeTime(time, strength),
+      now: () => this.ctx.currentTime,
+    };
+    return { host, ledger };
+  }
+
+  /** Realtime singleton bound to the browser AudioContext (`options` count on the first call only). */
+  public static getInstance(options: Pick<AudioEngineOptions, 'rack'> = {}): AudioEngine {
     if (!AudioEngine.instance) {
       AudioEngine.instance = new AudioEngine({
         ctx: AudioContextManager.getInstance().getContext(),
         publishEvents: true,
+        rack: options.rack,
       });
     }
     return AudioEngine.instance;
+  }
+
+  // -------------------------------------------------------------------
+  // Rack editing (the canvas, RESET PATCH, CLEAR ALL, the module browser)
+  // -------------------------------------------------------------------
+
+  /**
+   * Replace every module and cable with a preset (RESET PATCH = the default
+   * rack). Module code not yet in memory is fetched first; the rack is
+   * cleared immediately and the cables are applied once every module exists.
+   */
+  public async loadRack(preset: RackPreset): Promise<void> {
+    this.suspendRackEvents = true;
+    try {
+      await this.rack.loadAsync(preset);
+    } finally {
+      this.suspendRackEvents = false;
+    }
+    this.installChamberSinks();
+    this.applyPatch(preset.cables);
+  }
+
+  public resetRack(): Promise<void> {
+    return this.loadRack(clonePreset(DEFAULT_RACK));
+  }
+
+  /** Load a named preset (see RACK_PRESETS: 'default', 'full'). */
+  public loadPreset(name: string): Promise<void> {
+    return this.loadRack(AudioEngine.initialPreset(name));
+  }
+
+  /** The full studio's cables (applying them to a partial rack keeps the ones whose jacks exist). */
+  public defaultCables(): PatchCable[] {
+    return FULL_RACK.cables.map((c) => ({ ...c }));
+  }
+
+  /** Remove every module (and so every cable). */
+  public clearRack(): void {
+    this.rack.clear();
+  }
+
+  /** Add a module of `type` (loads its code when needed); cables are untouched. */
+  public async addModule(type: string, position?: { x: number; y: number }): Promise<ModuleInstance> {
+    return this.rack.add(type, { position });
+  }
+
+  /** Remove one module; cables attached to it are cut. */
+  public removeModule(id: string): boolean {
+    return this.rack.remove(id);
+  }
+
+  private suspendRackEvents = false;
+
+  /** Modules changed: re-resolve the patch without the cables that lost a jack. */
+  private onRackChanged(): void {
+    if (this.suspendRackEvents) return;
+    this.installChamberSinks();
+    this.applyPatch(this.cables);
+  }
+
+  private installChamberSinks(): void {
+    for (const m of this.rack.list()) {
+      if (m.descriptor.type === 'chamber') (m as ChamberModule).sink = (note, module) => this.playChamberNote(note, false, module);
+    }
   }
 
   // -------------------------------------------------------------------
@@ -203,33 +324,60 @@ export class AudioEngine {
 
   /**
    * Re-wire the audio graph, trigger gating and CV routing from a set of
-   * cables. Audio cables connect module outputs to module inputs; trigger
-   * cables decide which modules a source may fire; CV cables feed the
-   * modulation targets (see core/cv/CvBus).
+   * cables. Cables whose jacks are no longer in the rack are dropped. Audio
+   * cables connect the AudioNodes behind the jacks; trigger cables decide
+   * which trigger-in handlers a trigger-out jack fires; CV cables feed the
+   * modules' CV targets (see core/cv/CvBus).
    */
   public applyPatch(cables: PatchCable[]): void {
-    this.cables = cables.map((c) => ({ ...c }));
+    this.nodes = this.rack.nodes();
+    this.portOwners = new Map();
+    for (const instance of this.rack.list()) {
+      const node = this.nodes.find((n) => n.id === instance.id);
+      if (!node) continue;
+      for (const p of node.inputs) this.portOwners.set(p.id, instance);
+      for (const p of node.outputs) this.portOwners.set(p.id, instance);
+    }
     const resolved = resolvePatch(cables, this.nodes);
+    const invalid = new Set(resolved.invalid.map((c) => c.id));
+    this.cables = cables.filter((c) => !invalid.has(c.id)).map((c) => ({ ...c }));
 
-    for (const node of this.outputPorts.values()) {
-      node.disconnect();
+    for (const link of this.audioLinks) {
+      try {
+        link.from.disconnect(link.to);
+      } catch {
+        /* the node was disposed with its module */
+      }
     }
+    this.audioLinks = [];
     for (const link of resolved.audio) {
-      const from = this.outputPorts.get(link.fromPortId);
-      const to = this.inputPorts.get(link.toPortId);
-      if (from && to) from.connect(to);
+      const from = this.portOwners.get(link.fromPortId)?.audioOutputs?.[link.fromPortId];
+      const to = this.portOwners.get(link.toPortId)?.audioInputs?.[link.toPortId];
+      if (!from || !to) continue;
+      from.connect(to);
+      this.audioLinks.push({ from, to });
     }
 
-    this.triggerTargets = new Map<NoteSource, Set<string>>();
+    this.triggerLinks = new Map();
     for (const link of resolved.trigger) {
-      const source = TRIGGER_SOURCES[link.fromPortId];
-      const target = this.triggerInputPorts.get(link.toPortId);
-      if (!source || !target) continue;
-      if (!this.triggerTargets.has(source)) this.triggerTargets.set(source, new Set());
-      this.triggerTargets.get(source)!.add(target);
+      const instance = this.portOwners.get(link.toPortId);
+      const handler = instance?.triggerInputs?.[link.toPortId];
+      if (!instance || !handler) continue;
+      if (!this.triggerLinks.has(link.fromPortId)) this.triggerLinks.set(link.fromPortId, []);
+      this.triggerLinks.get(link.fromPortId)!.push({ instance, portId: link.toPortId, handler });
     }
 
-    this.applyCvChanges(this.cv.setLinks(resolved.cv), this.ctx.currentTime);
+    this.applyCvChanges(this.cv.setLinks(resolved.cv, cvKinds(this.nodes)), this.ctx.currentTime);
+    for (const l of Array.from(this.patchListeners)) l(this.getPatch());
+    if (this.publishEvents) this.eventBus.publish({ type: 'PATCH_CHANGED', timestamp: performance.now(), cableCount: this.cables.length });
+  }
+
+  /** Observe cable changes (the canvas mirrors the engine's patch). */
+  public subscribePatch(listener: PatchListener): () => void {
+    this.patchListeners.add(listener);
+    return () => {
+      this.patchListeners.delete(listener);
+    };
   }
 
   // -------------------------------------------------------------------
@@ -242,30 +390,7 @@ export class AudioEngine {
   }
 
   private applyCvChanges(changes: CvChange[], when: number): void {
-    for (const c of changes) {
-      switch (c.targetPortId) {
-        case 'syn-filter-cv':
-          this.synth.setCutoffModulation(c.value, when);
-          break;
-        case 'syn-pitch-cv':
-          this.synth.setPitchOffset(c.value, when);
-          break;
-        case 'del-time-cv':
-          this.delay.setTimeModulation(c.value, when);
-          break;
-        case 'mrm-cv-in':
-          // Applied per strike in playNote (the marimba has no continuous pitch).
-          break;
-      }
-    }
-  }
-
-  /** Frequency a note of `track` sounds at once its PITCH CV is applied. */
-  private applyPitchCv(track: TrackId, frequency: number): number {
-    const port = track === 'synth' ? 'syn-pitch-cv' : track === 'marimba' ? 'mrm-cv-in' : null;
-    if (!port) return frequency;
-    const semitones = this.cv.targetValue(port);
-    return semitones === 0 ? frequency : frequency * Math.pow(2, semitones / 12);
+    for (const c of changes) this.portOwners.get(c.targetPortId)?.setCvTarget?.(c.targetPortId, c.value, when);
   }
 
   public getPatch(): PatchCable[] {
@@ -276,14 +401,20 @@ export class AudioEngine {
     return this.nodes;
   }
 
-  public isTriggerTarget(module: 'marimba' | 'percussion' | 'synth', source: NoteSource = 'sequencer'): boolean {
-    return this.triggerTargets.get(source)?.has(module) ?? false;
+  /** Score label of a trigger-out jack (from its module's descriptor). */
+  private noteSourceOf(fromPortId: string): NoteSource {
+    const owner = this.portOwners.get(fromPortId);
+    const spec = owner?.descriptor.ports.find((p) => portIdFor(owner.descriptor.type, owner.id, p.id) === fromPortId);
+    return spec?.noteSource ?? owner?.descriptor.type ?? 'unknown';
   }
 
-  private moduleForTrack(track: TrackId): 'marimba' | 'percussion' | 'synth' {
-    if (track === 'marimba') return 'marimba';
-    if (track === 'synth') return 'synth';
-    return 'percussion';
+  /** Whether any module of `type` has a trigger-in patched from a jack labelled `source`. */
+  public isTriggerTarget(type: string, source: NoteSource = 'sequencer'): boolean {
+    for (const [fromPortId, targets] of this.triggerLinks) {
+      if (this.noteSourceOf(fromPortId) !== source) continue;
+      if (targets.some((t) => t.instance.descriptor.type === type)) return true;
+    }
+    return false;
   }
 
   /** Observe every note played, from any source. */
@@ -299,51 +430,32 @@ export class AudioEngine {
   }
 
   /**
-   * Play a note at `when` if the source is patched to the instrument's
-   * module and the track is not muted. Returns true when it sounded.
-   * With `extra.holdId` a synth note is held until `releaseHeld(holdId)`
-   * instead of using `cmd.duration`.
+   * Fire a note from the trigger-out jack `fromPortId` at `when`: every
+   * trigger-in patched to it is offered the command; those that respond
+   * sound it and a PlayedNote is emitted per sounding module (with the
+   * frequency as it sounded, e.g. after PITCH CV). Returns true when any
+   * module sounded. With `extra.holdId` a note is held until
+   * `releaseHeld(holdId)` instead of using `cmd.duration`.
    */
-  public playNote(
-    cmd: NoteCommand,
-    when: number,
-    source: NoteSource,
-    extra: { step?: number; collision?: CollisionEvent; holdId?: string } = {}
-  ): boolean {
-    const module = this.moduleForTrack(cmd.track);
-    if (!this.isTriggerTarget(module, source)) return false;
+  public playNote(cmd: NoteCommand, when: number, fromPortId: string, extra: NoteExtra = {}): boolean {
     if (this.trackMask !== null && !this.trackMask.has(cmd.track)) return false;
-    if (cmd.frequency !== undefined) cmd = { ...cmd, frequency: this.applyPitchCv(cmd.track, cmd.frequency) };
-
-    switch (cmd.track) {
-      case 'kick':
-        this.drums.triggerKick(cmd.velocity, when);
-        break;
-      case 'snare':
-        this.drums.triggerSnare(cmd.velocity, when);
-        break;
-      case 'hihat':
-        this.drums.triggerHiHat(cmd.velocity, cmd.open ?? false, when);
-        break;
-      case 'marimba':
-        this.marimba.strike(cmd.frequency ?? MARIMBA_NOTES[0], cmd.velocity, when);
-        break;
-      case 'synth':
-        if (extra.holdId !== undefined) {
-          this.synth.triggerNote(cmd.frequency ?? SYNTH_NOTES[0], cmd.velocity, undefined, when, extra.holdId);
-        } else {
-          this.synth.triggerNote(cmd.frequency ?? SYNTH_NOTES[0], cmd.velocity, cmd.duration ?? 0.18, when);
-        }
-        break;
+    const targets = this.triggerLinks.get(fromPortId);
+    if (!targets || targets.length === 0) return false;
+    const source = this.noteSourceOf(fromPortId);
+    let sounded = false;
+    for (const target of targets) {
+      const played = target.handler(cmd, when, extra);
+      if (!played) continue;
+      sounded = true;
+      const { step, collision } = extra;
+      this.emitNote({ time: when, track: played.track, frequency: played.frequency, velocity: played.velocity, source, step, collision });
     }
-    const { step, collision } = extra;
-    this.emitNote({ time: when, track: cmd.track, frequency: cmd.frequency, velocity: cmd.velocity, source, step, collision });
-    return true;
+    return sounded;
   }
 
-  /** Release a synth note that was started with `playNote(..., { holdId })`. */
+  /** Release a note that was started with `playNote(..., { holdId })` (every module that holds notes). */
   public releaseHeld(holdId: string, when: number): void {
-    this.synth.releaseNote(holdId, when);
+    for (const m of this.rack.list()) m.releaseHeld?.(holdId, when);
   }
 
   /**
@@ -352,7 +464,7 @@ export class AudioEngine {
    * physics still runs in one pass (its collision times are sub-step exact
    * only then). Returns the queue; call `playChamberNote` for each entry.
    */
-  public deferChamberNotes(): ChamberNote[] {
+  public deferChamberNotes(): QueuedChamberNote[] {
     this.chamberQueue = [];
     return this.chamberQueue;
   }
@@ -361,12 +473,15 @@ export class AudioEngine {
     this.chamberQueue = null;
   }
 
-  public playChamberNote(note: ChamberNote, force: boolean = false): void {
+  public playChamberNote(note: ChamberNote, force: boolean = false, module: ChamberModule | null = null): void {
+    const source = module ?? this.chamberModule();
+    if (!source) return;
     if (this.chamberQueue && !force) {
-      this.chamberQueue.push(note);
+      this.chamberQueue.push({ note, module: source });
       return;
     }
-    const sounded = this.playNote(note.command, note.time, 'chamber', { collision: note.collision });
+    const fromPortId = source.trigOut;
+    const sounded = this.playNote(note.command, note.time, fromPortId, { collision: note.collision });
     if (!sounded || !this.publishEvents) return;
     this.eventBus.publish({
       type: 'CHAMBER_COLLISION',
@@ -379,6 +494,50 @@ export class AudioEngine {
       track: note.command.track,
       impactSpeed: note.collision.impactSpeed,
     });
+  }
+
+  // -------------------------------------------------------------------
+  // Module accessors (the default rack's instances; throw when absent)
+  // -------------------------------------------------------------------
+
+  private moduleOfType<T extends ModuleInstance>(type: string): T {
+    const m = this.rack.findByType<T>(type);
+    if (!m) throw new Error(`no ${type} module in the rack`);
+    return m;
+  }
+
+  public get synth(): OscillatorVoice {
+    return this.moduleOfType<SynthModule>('synth').voice;
+  }
+
+  public get marimba(): MarimbaModel {
+    return this.moduleOfType<MarimbaModule>('marimba').model;
+  }
+
+  public get drums(): PercussionEngine {
+    return this.moduleOfType<PercussionModule>('percussion').drums;
+  }
+
+  public get delay(): DelayEffect {
+    return this.moduleOfType<DelayModule>('delay').effect;
+  }
+
+  /** The (first) gravity chamber's physics engine. */
+  public get chamber(): ChamberEngine {
+    return this.moduleOfType<ChamberModule>('chamber').engine;
+  }
+
+  private chamberModule(): ChamberModule | null {
+    return this.rack.findByType<ChamberModule>('chamber');
+  }
+
+  /** Every gravity chamber in the rack (the offline renderer drives them itself). */
+  public chamberEngines(): ChamberEngine[] {
+    return this.rack.list().filter((m) => m.descriptor.type === 'chamber').map((m) => (m as ChamberModule).engine);
+  }
+
+  private chambers(): ChamberEngine[] {
+    return this.chamberEngines();
   }
 
   // -------------------------------------------------------------------
@@ -395,10 +554,10 @@ export class AudioEngine {
 
   private bindClock(): void {
     this.clock.subscribeHorizon((horizon) => {
-      if (this.chamber.isRunning()) this.chamber.runTo(horizon);
+      for (const c of this.chambers()) if (c.isRunning()) c.runTo(horizon);
     });
     this.clock.subscribe((stepIndex, audioTime) => {
-      if (this.chamberStepHook) this.chamber.onStep(stepIndex, audioTime);
+      if (this.chamberStepHook) for (const c of this.chambers()) c.onStep(stepIndex, audioTime);
       const fired = this.triggerStep(stepIndex, audioTime);
       this.stepListeners.forEach((l) => l(stepIndex, audioTime, fired));
       if (!this.publishEvents) return;
@@ -423,7 +582,7 @@ export class AudioEngine {
   public triggerStep(stepIndex: number, audioTime: number): FiredNote[] {
     const fired: FiredNote[] = [];
     const play = (cmd: NoteCommand) => {
-      if (this.playNote(cmd, audioTime, 'sequencer', { step: stepIndex })) {
+      if (this.playNote(cmd, audioTime, CLOCK_TRIG_OUT, { step: stepIndex })) {
         fired.push({ track: cmd.track, frequency: cmd.frequency, velocity: cmd.velocity });
       }
     };
@@ -456,7 +615,7 @@ export class AudioEngine {
     // Connect the tap before the first step is scheduled so nothing is missed.
     if (this.recordArmed) await this.startTake();
     this.clock.start();
-    this.chamber.start(this.clock.getStartTime());
+    this.rack.transportStart(this.clock.getStartTime());
     // The performance log is anchored to the first step, like a bounce's t = 0.
     this.input.log.start(this.clock.getStartTime());
     if (this.publishEvents) {
@@ -466,7 +625,7 @@ export class AudioEngine {
 
   public stopAudio(): void {
     this.clock.stop();
-    this.chamber.stop();
+    this.rack.transportStop();
     this.input.log.stop();
     if (this.recorder.isRecording()) void this.stopTake('stopped');
     if (this.publishEvents) {

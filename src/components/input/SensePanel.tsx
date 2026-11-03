@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AudioEngine } from '../../core/audio/AudioEngine.ts';
-import { InputHub } from '../../core/input/InputHub.ts';
 import { nearestNote, noteName } from '../../core/input/InputEvents.ts';
-import type { SensorStatus } from '../../core/sense/SensorEngine.ts';
+import type { SensorEngine, SensorStatus } from '../../core/sense/SensorEngine.ts';
 import type { SensorReading } from '../../core/sense/SensorAnalysis.ts';
 import { Stepper } from '../ui/Stepper.tsx';
 import { Mic, AudioLines } from 'lucide-react';
@@ -14,10 +13,8 @@ const ROOT_CHOICES = Array.from({ length: 37 }, (_, i) => 36 + i); // C2 .. C5
  * level readout, and the settings that shape PITCH CV (root), ONSET TRIG
  * (which drum) and the tracker (gain, clarity).
  */
-export const SensePanel: React.FC = () => {
+export const SensePanel: React.FC<{ sensor: SensorEngine }> = ({ sensor }) => {
   const engine = AudioEngine.getInstance();
-  const hub = InputHub.getInstance();
-  const sensor = hub.sensor;
   const [, force] = useState({});
   const refresh = () => force({});
   const [status, setStatus] = useState<SensorStatus>(sensor.getStatus());

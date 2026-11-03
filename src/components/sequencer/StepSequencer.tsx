@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { AudioEngine } from '../../core/audio/AudioEngine.ts';
+import type { PercussionModule } from '../../modules/percussion/module.ts';
+import type { MarimbaModule } from '../../modules/marimba/module.ts';
+import type { SynthModule } from '../../modules/synth/module.ts';
 import { EventBus } from '../../core/events/EventBus.ts';
 import type { StepTriggeredEvent } from '../../core/events/DomainEvents.ts';
 import { Music, Volume2, Sparkles, Disc } from 'lucide-react';
@@ -30,6 +33,14 @@ export const StepSequencer: React.FC = () => {
       timers.forEach((t) => clearTimeout(t));
     };
   }, []);
+
+  // The instrument modules a track auditions on / is played by (absent modules show a hint).
+  const [, bumpRack] = useState(0);
+  useEffect(() => engine.rack.subscribe((change) => (change === 'modules' || change === 'reset') && bumpRack((v) => v + 1)), [engine]);
+  const auditionTarget = (track: string): boolean => {
+    const type = track === 'marimba' ? 'marimba' : track === 'synth' ? 'synth' : 'percussion';
+    return engine.rack.findByType(type) !== null;
+  };
 
   const handleStepToggle = (track: 'kick' | 'snare' | 'hihat' | 'marimba' | 'synth', stepIdx: number) => {
     engine.togglePatternStep(track, stepIdx);
@@ -88,7 +99,7 @@ export const StepSequencer: React.FC = () => {
     <div className="bg-jungle-900 border border-jungle-700/80 rounded-xl p-4 shadow-xl flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-mango-500 animate-pulse" />
+          <div className="w-2.5 h-2.5 rounded-full bg-mango-500" />
           <h3 className="text-xs font-mono font-bold tracking-wider text-cream-100">
             16-STEP TROPICAL GROOVE MATRIX
           </h3>
@@ -109,17 +120,25 @@ export const StepSequencer: React.FC = () => {
           return (
             <div key={track.id} className="flex items-center gap-2">
               <button
+                title={auditionTarget(track.id) ? 'Audition' : 'Add the instrument module to audition this track'}
                 onClick={() => {
-                  if (track.id === 'kick') engine.drums.triggerKick();
-                  else if (track.id === 'snare') engine.drums.triggerSnare();
-                  else if (track.id === 'hihat') engine.drums.triggerHiHat();
-                  else if (track.id === 'marimba') engine.marimba.strike(329.63);
-                  else if (track.id === 'synth') engine.synth.triggerNote(130.81, 0.8, 0.2);
+                  // Audition the track on the instrument module, if it is in the rack.
+                  const drums = engine.rack.findByType<PercussionModule>('percussion')?.drums;
+                  const marimba = engine.rack.findByType<MarimbaModule>('marimba')?.model;
+                  const synth = engine.rack.findByType<SynthModule>('synth')?.voice;
+                  if (track.id === 'kick') drums?.triggerKick();
+                  else if (track.id === 'snare') drums?.triggerSnare();
+                  else if (track.id === 'hihat') drums?.triggerHiHat();
+                  else if (track.id === 'marimba') marimba?.strike(329.63);
+                  else if (track.id === 'synth') synth?.triggerNote(130.81, 0.8, 0.2);
                 }}
+                data-missing-module={auditionTarget(track.id) ? undefined : 'true'}
                 className={`w-36 flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left transition-all ${
                   isTriggeringNow
                     ? `${track.color} text-jungle-950 font-bold shadow-md`
-                    : 'bg-jungle-950/70 border-jungle-800 text-cream-200/80 hover:border-jungle-600'
+                    : auditionTarget(track.id)
+                      ? 'bg-jungle-950/70 border-jungle-800 text-cream-200/80 hover:border-jungle-600'
+                      : 'bg-jungle-950/40 border-dashed border-jungle-800 text-cream-200/35'
                 }`}
               >
                 <div className="flex items-center gap-1.5 truncate">
@@ -146,7 +165,7 @@ export const StepSequencer: React.FC = () => {
                     <button
                       key={stepIdx}
                       onClick={() => handleStepToggle(track.id, stepIdx)}
-                      className={`h-7 rounded transition-all duration-75 flex items-center justify-center relative font-mono text-[9px] ${
+                      className={`h-7 rounded transition-colors duration-75 flex items-center justify-center relative font-mono text-[9px] ${
                         isActive
                           ? track.activeColor
                           : isQuarterBeat

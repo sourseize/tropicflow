@@ -154,4 +154,9 @@ export class PercussionEngine {
     noise.stop(now + decayTime);
     disconnectOnEnded(noise, gain, bandpass);
   }
+
+  /** Tear down (one-shot voices release themselves when they end). */
+  public dispose(): void {
+    this.outputNode.disconnect();
+  }
 }

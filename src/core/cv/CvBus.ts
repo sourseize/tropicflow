@@ -16,24 +16,25 @@
  *   target 'time'    octaves added to the delay time
  */
 import type { ResolvedLink } from '../graph/PatchRouter.ts';
+import type { CvSourceKind, CvTargetKind, GraphNode } from '../graph/GraphTypes.ts';
 
-export type CvSourceKind = 'pitch' | 'control';
-export type CvTargetKind = 'pitch' | 'cutoff' | 'time';
+export type { CvSourceKind, CvTargetKind };
 
-export const CV_SOURCES: Readonly<Record<string, CvSourceKind>> = {
-  'midi-pitch-cv': 'pitch',
-  'midi-mod-cv': 'control',
-  'clk-swing-1': 'control',
-  'sns-pitch-cv': 'pitch',
-  'sns-level-cv': 'control',
-};
+/** Which jacks are CV sources / targets and how each is interpreted (declared by the modules). */
+export interface CvPortKinds {
+  sources: Record<string, CvSourceKind>;
+  targets: Record<string, CvTargetKind>;
+}
 
-export const CV_TARGETS: Readonly<Record<string, CvTargetKind>> = {
-  'syn-pitch-cv': 'pitch',
-  'mrm-cv-in': 'pitch',
-  'syn-filter-cv': 'cutoff',
-  'del-time-cv': 'time',
-};
+/** Collect the CV kinds declared on a set of canvas nodes. */
+export function cvKinds(nodes: GraphNode[]): CvPortKinds {
+  const kinds: CvPortKinds = { sources: {}, targets: {} };
+  for (const node of nodes) {
+    for (const p of node.outputs) if (p.type === 'cv-out' && p.cvKind) kinds.sources[p.id] = p.cvKind as CvSourceKind;
+    for (const p of node.inputs) if (p.type === 'cv-in' && p.cvKind) kinds.targets[p.id] = p.cvKind as CvTargetKind;
+  }
+  return kinds;
+}
 
 /** Full-scale control (1.0) into a pitch target = one octave. */
 export const CONTROL_TO_SEMITONES = 12;
@@ -65,25 +66,42 @@ export interface CvChange {
 }
 
 export class CvBus {
+  private kinds: CvPortKinds;
   private readonly sources: Map<string, number> = new Map();
   /** target port -> source ports patched into it */
   private links: Map<string, Set<string>> = new Map();
   private readonly targetValues: Map<string, number> = new Map();
 
-  /** Replace the routing (from PatchRouter.resolvePatch(...).cv). Returns every target whose value changed. */
-  public setLinks(links: ResolvedLink[]): CvChange[] {
+  constructor(kinds: CvPortKinds = { sources: {}, targets: {} }) {
+    this.kinds = kinds;
+  }
+
+  /**
+   * Replace the routing (from PatchRouter.resolvePatch(...).cv) and, when
+   * given, the jack kinds (modules were added / removed). Returns every
+   * target whose value changed, including targets that disappeared (reset to 0).
+   */
+  public setLinks(links: ResolvedLink[], kinds?: CvPortKinds): CvChange[] {
+    const previousTargets = Object.keys(this.kinds.targets);
+    if (kinds) this.kinds = kinds;
     this.links = new Map();
     for (const l of links) {
-      if (!(l.fromPortId in CV_SOURCES) || !(l.toPortId in CV_TARGETS)) continue;
+      if (!(l.fromPortId in this.kinds.sources) || !(l.toPortId in this.kinds.targets)) continue;
       if (!this.links.has(l.toPortId)) this.links.set(l.toPortId, new Set());
       this.links.get(l.toPortId)!.add(l.fromPortId);
     }
-    return this.recompute(Object.keys(CV_TARGETS));
+    const changes = this.recompute(Object.keys(this.kinds.targets));
+    for (const gone of previousTargets) {
+      if (gone in this.kinds.targets) continue;
+      if ((this.targetValues.get(gone) ?? 0) !== 0) changes.push({ targetPortId: gone, kind: 'pitch', value: 0 });
+      this.targetValues.delete(gone);
+    }
+    return changes;
   }
 
   /** Publish a source value. Returns the targets whose value changed. Unknown sources are ignored. */
   public setSource(portId: string, value: number): CvChange[] {
-    if (!(portId in CV_SOURCES)) return [];
+    if (!(portId in this.kinds.sources)) return [];
     if (this.sources.get(portId) === value) return [];
     this.sources.set(portId, value);
     const targets: string[] = [];
@@ -106,9 +124,9 @@ export class CvBus {
   }
 
   private compute(target: string): number {
-    const kind = CV_TARGETS[target];
+    const kind = this.kinds.targets[target];
     let sum = 0;
-    for (const src of this.links.get(target) ?? []) sum += scaleCv(CV_SOURCES[src], kind, this.sources.get(src) ?? 0);
+    for (const src of this.links.get(target) ?? []) sum += scaleCv(this.kinds.sources[src], kind, this.sources.get(src) ?? 0);
     return sum;
   }
 
@@ -118,7 +136,7 @@ export class CvBus {
       const value = this.compute(target);
       if ((this.targetValues.get(target) ?? 0) === value) continue;
       this.targetValues.set(target, value);
-      changes.push({ targetPortId: target, kind: CV_TARGETS[target], value });
+      changes.push({ targetPortId: target, kind: this.kinds.targets[target], value });
     }
     return changes;
   }

@@ -12,7 +12,6 @@
  * and ~10-20 ms of onset latency is fine for a trigger source (phase 3b of
  * the plan moves to a worklet if that ever matters).
  */
-import type { AudioEngine } from '../audio/AudioEngine.ts';
 import { isRealtimeContext } from '../audio/AudioContextManager.ts';
 import { type InputEvent, SENSOR_MIC_DEVICE, SENSOR_VOICE_DEVICE } from '../input/InputEvents.ts';
 import { frameSizeFor } from './PitchDetector.ts';
@@ -29,10 +28,24 @@ export interface SensorStatus {
   micLabel: string;
 }
 
+/** What the tracker needs from its module host: the context, a resume for the mic gesture, the input bus. */
+export interface SensorEngineHost {
+  ctx: BaseAudioContext;
+  resume(): Promise<void>;
+  publish(events: InputEvent[]): void;
+  subscribe(listener: (event: InputEvent) => void): () => void;
+}
+
 export interface SensorEngineDeps {
   /** Defaults to navigator.mediaDevices.getUserMedia; tests inject a fake. */
   getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
   isSecureContext?: () => boolean;
+  /**
+   * Where the AnalyserNode comes from. Chromium never frees an analyser that
+   * has had an input connected (infinite tail), so the SENSE module hands
+   * out pooled analysers that are reused by the next instance.
+   */
+  analyserPool?: { acquire(ctx: BaseAudioContext): AnalyserNode | null; release(node: AnalyserNode): void };
 }
 
 export interface SensorConfig extends SensorOptions {
@@ -71,9 +84,10 @@ export function describeMicError(err: unknown): { state: MicState; message: stri
 
 export class SensorEngine {
   public readonly voice: VirtualVoice;
-  private readonly engine: AudioEngine;
+  private readonly engine: SensorEngineHost;
   private readonly deps: SensorEngineDeps;
-  private readonly input: GainNode;
+  /** Gain stage in front of the analyser (mic and virtual voice sum here). */
+  public readonly inputNode: GainNode;
   private readonly analyser: AnalyserNode | null;
   private readonly frame: Float32Array<ArrayBuffer>;
   private readonly pitchFrameSize: number;
@@ -90,22 +104,22 @@ export class SensorEngine {
   private readonly listeners: Set<(status: SensorStatus, reading: SensorReading) => void> = new Set();
   private unsubscribeBus: (() => void) | null = null;
 
-  constructor(engine: AudioEngine, deps: SensorEngineDeps = {}) {
+  constructor(engine: SensorEngineHost, deps: SensorEngineDeps = {}) {
     this.engine = engine;
     this.deps = deps;
     const ctx = engine.ctx;
-    this.input = ctx.createGain();
-    this.input.gain.value = this.config.gain;
-    this.analyser = typeof ctx.createAnalyser === 'function' ? ctx.createAnalyser() : null;
+    this.inputNode = ctx.createGain();
+    this.inputNode.gain.value = this.config.gain;
+    this.analyser = deps.analyserPool ? deps.analyserPool.acquire(ctx) : typeof ctx.createAnalyser === 'function' ? ctx.createAnalyser() : null;
     this.pitchFrameSize = frameSizeFor(ctx.sampleRate, 60);
     if (this.analyser) {
       this.analyser.fftSize = Math.max(ANALYSER_SIZE, this.pitchFrameSize);
       this.analyser.smoothingTimeConstant = 0;
-      this.input.connect(this.analyser);
+      this.inputNode.connect(this.analyser);
     }
     this.frame = new Float32Array(this.analyser?.fftSize ?? ANALYSER_SIZE);
     this.voice = new VirtualVoice(ctx);
-    this.voice.outputNode.connect(this.input);
+    this.voice.outputNode.connect(this.inputNode);
     this.micTracker = new SensorTracker(SENSOR_MIC_DEVICE, this.config);
     this.voiceTracker = new SensorTracker(SENSOR_VOICE_DEVICE, this.config);
     this.status = { mic: this.initialMicState(), micMessage: '', voice: false, micLabel: '' };
@@ -145,7 +159,7 @@ export class SensorEngine {
 
   public updateConfig(patch: Partial<SensorConfig>): void {
     this.config = { ...this.config, ...patch };
-    if (patch.gain !== undefined) this.input.gain.setTargetAtTime(patch.gain, this.engine.ctx.currentTime, 0.02);
+    if (patch.gain !== undefined) this.inputNode.gain.setTargetAtTime(patch.gain, this.engine.ctx.currentTime, 0.02);
     if (patch.clarityThreshold !== undefined || patch.pitch !== undefined || patch.level !== undefined) {
       // Trackers are cheap: rebuild them with the new options.
       this.rebuildTrackers();
@@ -193,7 +207,7 @@ export class SensorEngine {
       const ctx = this.engine.ctx;
       if (!isRealtimeContext(ctx)) throw new Error('microphone input needs a realtime AudioContext');
       this.micSource = ctx.createMediaStreamSource(stream);
-      this.micSource.connect(this.input);
+      this.micSource.connect(this.inputNode);
       this.stream = stream;
       const label = stream.getAudioTracks()[0]?.label ?? '';
       stream.getAudioTracks()[0]?.addEventListener('ended', () => this.disableMic('The microphone was disconnected'));
@@ -229,7 +243,7 @@ export class SensorEngine {
       void this.engine.resume();
       this.voice.start();
       this.voiceTracker.reset();
-      this.unsubscribeBus = this.engine.input.bus.subscribe((e) => this.onBusEvent(e));
+      this.unsubscribeBus = this.engine.subscribe((e) => this.onBusEvent(e));
       this.ensurePolling();
     } else {
       this.unsubscribeBus?.();
@@ -291,7 +305,7 @@ export class SensorEngine {
     }
     events.push(...tracker.analysePitch(this.frame.subarray(this.frame.length - this.pitchFrameSize), sr, now));
 
-    if (events.length) this.engine.input.bus.publishAll(events);
+    if (events.length) this.engine.publish(events);
     const wall = performance.now();
     if (wall - this.lastNotify >= UI_NOTIFY_MS) {
       this.lastNotify = wall;
@@ -304,5 +318,22 @@ export class SensorEngine {
     this.status = { ...this.status, ...patch };
     const reading = this.activeTracker().getReading();
     for (const l of Array.from(this.listeners)) l(this.status, reading);
+  }
+
+  /** Mic off, voice off, poll stopped, every node torn down. Idempotent. */
+  public dispose(): void {
+    this.disableMic();
+    this.setVoiceEnabled(false);
+    if (this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.listeners.clear();
+    this.voice.dispose();
+    this.inputNode.disconnect();
+    if (this.analyser) {
+      this.analyser.disconnect();
+      this.deps.analyserPool?.release(this.analyser);
+    }
   }
 }

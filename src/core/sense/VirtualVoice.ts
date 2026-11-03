@@ -19,6 +19,9 @@ export class VirtualVoice {
   private held: number[] = [];
   private started = false;
 
+  /** Every persistent node, for dispose(). */
+  private readonly nodes: AudioNode[] = [];
+
   constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
     this.outputNode = ctx.createGain();
@@ -62,6 +65,22 @@ export class VirtualVoice {
 
     this.osc.connect(filter).connect(this.voiceGain);
     this.voiceGain.connect(this.outputNode);
+    this.nodes.push(this.outputNode, filter, this.voiceGain, this.osc, this.lfo, lfoDepth, this.breath, breathGain, breathFilter);
+  }
+
+  /** Stop the sources and tear the graph down. Idempotent. */
+  public dispose(): void {
+    if (this.started) {
+      this.started = false;
+      try {
+        this.osc.stop();
+        this.lfo.stop();
+        this.breath.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    for (const n of this.nodes) n.disconnect();
   }
 
   /** Start the sources (idempotent). */

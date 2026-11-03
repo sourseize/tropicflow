@@ -15,6 +15,8 @@ export interface KeyboardDeviceDeps {
   publish: (events: InputEvent[]) => void;
   /** Defaults to `window`; tests pass a stub EventTarget. */
   target?: EventTarget;
+  /** How listeners are attached (a module passes its resource ledger so they are counted and released). */
+  listen?: (target: EventTarget, type: string, fn: EventListener) => () => void;
 }
 
 export type KeyboardStateListener = (state: KeyboardState) => void;
@@ -35,6 +37,7 @@ export class KeyboardDevice {
   private readonly onKeyDown = (e: Event) => this.onKey(e as KeyboardEvent, 'down');
   private readonly onKeyUp = (e: Event) => this.onKey(e as KeyboardEvent, 'up');
   private readonly onBlur = () => this.panic(performance.now());
+  private unlisten: Array<() => void> = [];
 
   constructor(deps: KeyboardDeviceDeps) {
     this.deps = deps;
@@ -48,9 +51,13 @@ export class KeyboardDevice {
   public enable(): void {
     if (this.enabled) return;
     this.enabled = true;
-    this.target.addEventListener('keydown', this.onKeyDown);
-    this.target.addEventListener('keyup', this.onKeyUp);
-    this.target.addEventListener('blur', this.onBlur);
+    const listen =
+      this.deps.listen ??
+      ((target: EventTarget, type: string, fn: EventListener) => {
+        target.addEventListener(type, fn);
+        return () => target.removeEventListener(type, fn);
+      });
+    this.unlisten = [listen(this.target, 'keydown', this.onKeyDown), listen(this.target, 'keyup', this.onKeyUp), listen(this.target, 'blur', this.onBlur)];
     this.notify();
   }
 
@@ -58,9 +65,8 @@ export class KeyboardDevice {
     if (!this.enabled) return;
     this.panic(performance.now());
     this.enabled = false;
-    this.target.removeEventListener('keydown', this.onKeyDown);
-    this.target.removeEventListener('keyup', this.onKeyUp);
-    this.target.removeEventListener('blur', this.onBlur);
+    for (const off of this.unlisten) off();
+    this.unlisten = [];
     this.notify();
   }
 

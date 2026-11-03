@@ -29,6 +29,8 @@ if (!fs.existsSync(path.join(DIST, 'index.html'))) {
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 fs.mkdirSync(OUT, { recursive: true });
+// Every run replaces the whole set: stale images from an earlier run never linger in the guide.
+for (const f of fs.readdirSync(OUT)) if (f.endsWith('.png')) fs.unlinkSync(path.join(OUT, f));
 
 const server = await new Promise((resolve) => {
   const s = http.createServer((req, res) => {
@@ -95,12 +97,34 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => typeof window.tropicflowEngine !== 'undefined');
   await page.waitForTimeout(500);
+  const modalClip = async () => {
+    const box = await page.locator('[role="dialog"]').boundingBox();
+    return { x: box.x - 16, y: box.y - 16, width: box.width + 32, height: box.height + 32 };
+  };
 
-  // 1. Overview, idle.
+  // 1. Overview, idle: the default rack (four tropical modules + the gravity chamber).
   await shot(page, 'app-overview');
   await shot(page, 'header-idle', { clip: HEADER });
   await shot(page, 'modular-canvas', { selector: '.tropical-grid', pad: 0 });
   await shot(page, 'module-clock', { selector: moduleCard('TROPIC CLOCK') });
+  // The module browser with its presets, and an empty rack.
+  await page.click('[data-testid="add-module"]');
+  await page.waitForSelector('[data-testid="module-browser"]');
+  await page.waitForTimeout(200);
+  await shot(page, 'module-browser', { clip: await modalClip() });
+  await page.keyboard.press('Escape');
+  await page.click('[data-testid="clear-all"]');
+  await page.waitForSelector('[data-testid="empty-rack"]');
+  await shot(page, 'canvas-empty', { selector: '.tropical-grid', pad: 0 });
+  // The rest of the tour uses the full studio (every module).
+  const fullStudio = async () => {
+    await page.evaluate(() => window.tropicflowEngine.loadPreset('full'));
+    await page.waitForSelector('[data-testid="module-sensor-1"]');
+    await page.waitForFunction(() => !document.body.textContent?.includes('loading…'));
+    await page.waitForTimeout(200);
+  };
+  await fullStudio();
+  await shot(page, 'modular-canvas-full', { selector: '.tropical-grid', pad: 0 });
   await shot(page, 'module-delay', { selector: moduleCard('TROPICAL TAPE DELAY') });
 
   // 2. Playing: sequencer, keyboard, visualizer come alive; chamber with balls.
@@ -126,7 +150,7 @@ try {
   await page.waitForTimeout(300);
   await page.click('[data-testid="sense-voice"]');
   await page.dblclick('[data-port-id="mrm-cv-in"]');
-  await page.click('text=RESET PATCH');
+  await fullStudio();
   // Min / max / stack.
   await page.click('[data-testid="module-header-delay-1"]');
   await page.waitForTimeout(150);
@@ -135,8 +159,7 @@ try {
   await page.click('[data-testid="stack"]');
   await page.waitForTimeout(250);
   await shot(page, 'canvas-stack', { selector: '.tropical-grid', pad: 0 });
-  await page.click('text=RESET PATCH');
-  await page.waitForTimeout(150);
+  await fullStudio();
   await page.click('[data-testid="chamber-drop"]');
   await page.waitForTimeout(250);
   await page.click('[data-testid="chamber-drop"]');
@@ -164,10 +187,6 @@ try {
   await shot(page, 'header-take', { clip: HEADER_RIGHT });
 
   // 4. Export dialog: WAV, OGG with a range, progress (realtime fallback so it is visible).
-  const modalClip = async () => {
-    const box = await page.locator('[role="dialog"]').boundingBox();
-    return { x: box.x - 16, y: box.y - 16, width: box.width + 32, height: box.height + 32 };
-  };
   await page.click('[data-testid="export-open"]');
   await page.waitForSelector('[data-testid="export-modal"]');
   await shot(page, 'export-wav', { clip: await modalClip() });
@@ -223,7 +242,7 @@ try {
     navigator.requestMIDIAccess = async () => ({ inputs: new Map([[input.id, input]]), outputs: new Map(), onstatechange: null });
     window.__fakeInput = input;
   });
-  await pMidi.goto(url);
+  await pMidi.goto(`${url}?rack=full`);
   await pMidi.waitForFunction(() => typeof window.tropicflowInput !== 'undefined');
   await pMidi.click('[data-testid="midi-enable"]');
   await pMidi.waitForFunction(() => window.tropicflowInput.midi.getStatus().state === 'ready');

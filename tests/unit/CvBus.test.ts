@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CvBus, scaleCv } from '../../src/core/cv/CvBus.ts';
+import { CvBus, cvKinds, scaleCv } from '../../src/core/cv/CvBus.ts';
 import { resolvePatch } from '../../src/core/graph/PatchRouter.ts';
 import { INITIAL_CABLES, INITIAL_NODES } from '../../src/core/graph/NodeGraph.ts';
 import { AudioClock } from '../../src/core/audio/AudioClock.ts';
@@ -18,7 +18,7 @@ test('scaling: pitch sources pass semitones, control sources span an octave / 3 
 });
 
 test('the default patch routes mod wheel -> cutoff and bend -> synth pitch; nothing else', () => {
-  const bus = new CvBus();
+  const bus = new CvBus(cvKinds(INITIAL_NODES));
   const initial = bus.setLinks(cv(INITIAL_CABLES));
   assert.deepEqual(initial, [], 'no target changes while every source is at rest');
   assert.deepEqual(bus.sourcesOf('syn-filter-cv'), ['midi-mod-cv']);
@@ -32,7 +32,7 @@ test('the default patch routes mod wheel -> cutoff and bend -> synth pitch; noth
 });
 
 test('several sources into one target add up; re-patching recomputes and reports what changed', () => {
-  const bus = new CvBus();
+  const bus = new CvBus(cvKinds(INITIAL_NODES));
   bus.setSource('midi-mod-cv', 1);
   bus.setSource('midi-pitch-cv', 3);
   const changes = bus.setLinks(cv([cable('midi-mod-cv', 'mrm-cv-in'), cable('midi-pitch-cv', 'mrm-cv-in')]));
@@ -55,7 +55,7 @@ test('SWING CV: the clock reports swing changes (engine publishes them as a 0..1
   unsub();
   clock.setSwing(0);
   assert.deepEqual(seen, [0.25, 0.5]);
-  const bus = new CvBus();
+  const bus = new CvBus(cvKinds(INITIAL_NODES));
   bus.setLinks(cv([cable('clk-swing-1', 'del-time-cv')]));
   assert.deepEqual(bus.setSource('clk-swing-1', 0.5 / 0.5), [{ targetPortId: 'del-time-cv', kind: 'time', value: 1 }]);
 });

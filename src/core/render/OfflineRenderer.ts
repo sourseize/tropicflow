@@ -2,6 +2,7 @@ import { AudioEngine, type TrackId } from '../audio/AudioEngine.ts';
 import { MasterBus } from '../audio/MasterBus.ts';
 import type { RenderConfig, RenderResult, ScoreEvent } from './RenderConfig.ts';
 import { ScriptPlayer, parseInputScript } from '../input/InputLog.ts';
+import { FULL_RACK } from '../modules/RackPreset.ts';
 
 /**
  * Measure the latency of the master bus by pushing a single-sample impulse
@@ -48,14 +49,17 @@ export async function renderOffline(config: RenderConfig): Promise<RenderResult>
     sampleRate: config.sampleRate,
   });
 
+  // The rack: as captured (modules with their states), or the full studio for legacy configs.
   const engine = new AudioEngine({
     ctx,
     publishEvents: false,
     noiseSeed: config.noiseSeed,
-    cables: config.cables,
+    rack: { modules: (config.rack ?? FULL_RACK).modules, cables: config.cables },
     connectToDestination: false,
-    chamber: config.chamber ? { ...config.chamber, enabled: config.chamber.enabled ?? true } : { enabled: false },
+    // The legacy chamber field overrides the chamber's state; a legacy config without it renders with the chamber off.
+    chamber: config.chamber ? { ...config.chamber, enabled: config.chamber.enabled ?? true } : config.rack ? undefined : { enabled: false },
   });
+  await engine.ready;
 
   const merger = ctx.createChannelMerger(4);
   const masterSplit = ctx.createChannelSplitter(2);
@@ -96,13 +100,14 @@ export async function renderOffline(config: RenderConfig): Promise<RenderResult>
   // then): feed it the steps' bar-synced drop requests from the probe clock,
   // simulate, and queue its notes to be merged below.
   const chamberNotes = engine.deferChamberNotes();
-  if (config.chamber) {
-    engine.chamber.start(0);
-    for (let i = 0; i < steps; i++) engine.chamber.onStep(i % engine.clock.getTotalSteps(), probe.durationForSteps(i));
-    engine.chamber.runTo(totalSeconds);
+  for (const chamber of engine.chamberEngines()) {
+    if (!chamber.isEnabled()) continue;
+    chamber.start(0);
+    for (let i = 0; i < steps; i++) chamber.onStep(i % engine.clock.getTotalSteps(), probe.durationForSteps(i));
+    chamber.runTo(totalSeconds);
   }
   engine.chamberStepHook = false;
-  chamberNotes.sort((a, b) => a.time - b.time);
+  chamberNotes.sort((a, b) => a.note.time - b.note.time);
   let chamberCursor = 0;
   engine.clock.reset(0);
 
@@ -112,11 +117,14 @@ export async function renderOffline(config: RenderConfig): Promise<RenderResult>
   const applyUntil = (until: number) => {
     const events = player ? player.runTo(until) : [];
     let e = 0;
-    while (e < events.length || (chamberCursor < chamberNotes.length && chamberNotes[chamberCursor].time <= until)) {
+    while (e < events.length || (chamberCursor < chamberNotes.length && chamberNotes[chamberCursor].note.time <= until)) {
       const nextEvent = e < events.length ? events[e].time : Infinity;
-      const nextNote = chamberCursor < chamberNotes.length && chamberNotes[chamberCursor].time <= until ? chamberNotes[chamberCursor].time : Infinity;
+      const nextNote = chamberCursor < chamberNotes.length && chamberNotes[chamberCursor].note.time <= until ? chamberNotes[chamberCursor].note.time : Infinity;
       if (nextEvent <= nextNote) engine.input.bus.publish(events[e++]);
-      else engine.playChamberNote(chamberNotes[chamberCursor++], true);
+      else {
+        const queued = chamberNotes[chamberCursor++];
+        engine.playChamberNote(queued.note, true, queued.module);
+      }
     }
   };
   for (let i = 0; i < steps; i++) {
@@ -133,26 +141,28 @@ export async function renderOffline(config: RenderConfig): Promise<RenderResult>
   return { sampleRate: rendered.sampleRate, channels, tapChannels, score, patternEnd, busLatency };
 }
 
+/** Legacy per-module fields: applied to the first module of each type that is in the rack. */
 function applyParams(engine: AudioEngine, config: RenderConfig): void {
   if (config.masterVolume !== undefined) engine.masterBus.setVolume(config.masterVolume);
   if (config.bridge) engine.input.updateSettings(config.bridge);
   if (config.sensor) engine.input.updateSensorSettings(config.sensor);
-  if (config.synth) {
+  const has = (type: string) => engine.rack.findByType(type) !== null;
+  if (config.synth && has('synth')) {
     for (const [k, v] of Object.entries(config.synth)) {
       engine.synth.updateParam(k as keyof typeof config.synth, v as never);
     }
   }
-  if (config.marimba) {
+  if (config.marimba && has('marimba')) {
     for (const [k, v] of Object.entries(config.marimba)) {
       engine.marimba.updateParam(k as keyof typeof config.marimba, v as number);
     }
   }
-  if (config.percussion) {
+  if (config.percussion && has('percussion')) {
     for (const [k, v] of Object.entries(config.percussion)) {
       engine.drums.updateParam(k as keyof typeof config.percussion, v as number);
     }
   }
-  if (config.delay) {
+  if (config.delay && has('delay')) {
     if (config.delay.time !== undefined) engine.delay.setDelayTime(config.delay.time);
     if (config.delay.feedback !== undefined) engine.delay.setFeedback(config.delay.feedback);
     if (config.delay.mix !== undefined) engine.delay.setMix(config.delay.mix);

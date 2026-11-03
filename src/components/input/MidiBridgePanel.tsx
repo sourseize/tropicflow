@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AudioEngine } from '../../core/audio/AudioEngine.ts';
-import { InputHub } from '../../core/input/InputHub.ts';
+import type { KeyboardDevice } from '../../core/input/keyboard/KeyboardDevice.ts';
+import type { WebMidiDevice } from '../../core/input/midi/WebMidiDevice.ts';
 import { noteName } from '../../core/input/InputEvents.ts';
 import type { MidiStatus } from '../../core/input/midi/WebMidiDevice.ts';
 import { Stepper } from '../ui/Stepper.tsx';
@@ -12,18 +13,24 @@ import { Keyboard, Cable, Play, Square, Trash2 } from 'lucide-react';
  * (replay / clear). Notes leave through the GATE OUT jack; cables decide
  * which instruments respond.
  */
-export const MidiBridgePanel: React.FC = () => {
+interface MidiBridgePanelProps {
+  /** The module's devices (each MIDI BRIDGE card shows its own). */
+  keyboard: KeyboardDevice;
+  midi: WebMidiDevice;
+}
+
+export const MidiBridgePanel: React.FC<MidiBridgePanelProps> = ({ keyboard, midi: midiDevice }) => {
   const engine = AudioEngine.getInstance();
-  const hub = InputHub.getInstance();
+  const hub = engine.inputHub;
   const [, force] = useState({});
   const refresh = () => force({});
-  const [midi, setMidi] = useState<MidiStatus>(hub.midi.getStatus());
+  const [midi, setMidi] = useState<MidiStatus>(midiDevice.getStatus());
   const [lit, setLit] = useState(false);
 
   useEffect(() => {
     const unsubs = [
-      hub.midi.subscribe((s) => setMidi({ ...s })),
-      hub.keyboard.subscribe(refresh),
+      midiDevice.subscribe((s) => setMidi({ ...s })),
+      keyboard.subscribe(refresh),
       hub.subscribeReplay(refresh),
       engine.input.subscribe((e) => {
         if (e.kind === 'noteOn') {
@@ -37,9 +44,9 @@ export const MidiBridgePanel: React.FC = () => {
   }, [engine, hub]);
 
   const activity = engine.input.getActivity();
-  const keys = hub.keyboard.getState();
+  const keys = keyboard.getState();
   const keysOn = !engine.input.isDeviceMuted('keys');
-  const midiOn = hub.midi.isEnabled();
+  const midiOn = midiDevice.isEnabled();
   const midiAvailable = midi.state !== 'unsupported' && midi.state !== 'insecure';
   const logCount = engine.input.log.length();
   const replaying = hub.isReplaying();
@@ -69,8 +76,8 @@ export const MidiBridgePanel: React.FC = () => {
           title={midi.message}
           disabled={!midiAvailable || midi.state === 'requesting'}
           onClick={() => {
-            if (midiOn) hub.midi.disable();
-            else void hub.midi.enable();
+            if (midiOn) midiDevice.disable();
+            else void midiDevice.enable();
           }}
           className={chip(midiOn, midiAvailable ? '' : 'opacity-50 cursor-not-allowed')}
         >
@@ -85,7 +92,7 @@ export const MidiBridgePanel: React.FC = () => {
             data-testid="midi-input"
             title={midi.message}
             value={midi.selected}
-            onChange={(e) => hub.midi.selectInput(e.target.value)}
+            onChange={(e) => midiDevice.selectInput(e.target.value)}
             className="bg-jungle-950 border border-jungle-700 rounded px-1 py-0.5 text-[10px] font-mono text-cream-100 min-w-0"
           >
             <option value="all">ALL INPUTS ({midi.inputs.length})</option>
@@ -99,7 +106,7 @@ export const MidiBridgePanel: React.FC = () => {
           <select
             data-testid="midi-channel"
             value={midi.channel ?? 'omni'}
-            onChange={(e) => hub.midi.setChannel(e.target.value === 'omni' ? undefined : Number(e.target.value))}
+            onChange={(e) => midiDevice.setChannel(e.target.value === 'omni' ? undefined : Number(e.target.value))}
             className="bg-jungle-950 border border-jungle-700 rounded px-1 py-0.5 text-[10px] font-mono text-cream-100"
           >
             <option value="omni">OMNI</option>
@@ -130,13 +137,13 @@ export const MidiBridgePanel: React.FC = () => {
         </div>
         <span className="flex items-center gap-1 text-cream-200/60">
           OCT
-          <button data-testid="midi-oct-down" onClick={() => hub.keyboard.press('KeyZ')} className="px-1 rounded border border-jungle-700 hover:border-mango-500">
+          <button data-testid="midi-oct-down" onClick={() => keyboard.press('KeyZ')} className="px-1 rounded border border-jungle-700 hover:border-mango-500">
             -
           </button>
           <span data-testid="midi-octave" className="text-cream-100 w-4 text-center">
             {keys.octave > 0 ? `+${keys.octave}` : keys.octave}
           </span>
-          <button data-testid="midi-oct-up" onClick={() => hub.keyboard.press('KeyX')} className="px-1 rounded border border-jungle-700 hover:border-mango-500">
+          <button data-testid="midi-oct-up" onClick={() => keyboard.press('KeyX')} className="px-1 rounded border border-jungle-700 hover:border-mango-500">
             +
           </button>
         </span>

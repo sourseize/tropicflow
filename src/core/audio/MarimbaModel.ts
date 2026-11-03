@@ -76,4 +76,9 @@ export class MarimbaModel {
     modulator.stop(stopTime);
     disconnectOnEnded(carrier, ampGain, modGain);
   }
+
+  /** Tear down (one-shot voices release themselves when they end). */
+  public dispose(): void {
+    this.outputNode.disconnect();
+  }
 }

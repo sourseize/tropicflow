@@ -21,7 +21,13 @@ export const VisualizerPanel: React.FC = () => {
     const timeDomainArray = new Uint8Array(bufferLength);
     const frequencyArray = new Uint8Array(bufferLength);
 
-    const render = () => {
+    // 30 fps is plenty for a phosphor scope, and nothing is drawn while the tab is hidden.
+    const FRAME_MS = 1000 / 30;
+    let last = 0;
+    const render = (time: number) => {
+      animationFrameRef.current = document.hidden ? null : requestAnimationFrame(render);
+      if (time - last < FRAME_MS) return;
+      last = time;
       if (mode === 'scope') {
         engine.masterBus.getWaveformData(timeDomainArray);
         OscilloscopeRenderer.render(ctx, canvas.width, canvas.height, timeDomainArray, '#70E000');
@@ -29,14 +35,18 @@ export const VisualizerPanel: React.FC = () => {
         engine.masterBus.getFrequencyData(frequencyArray);
         SpectrumRenderer.render(ctx, canvas.width, canvas.height, frequencyArray);
       }
-      animationFrameRef.current = requestAnimationFrame(render);
     };
-
-    render();
+    const resume = () => {
+      if (!document.hidden && animationFrameRef.current === null) animationFrameRef.current = requestAnimationFrame(render);
+    };
+    animationFrameRef.current = requestAnimationFrame(render);
+    document.addEventListener('visibilitychange', resume);
 
     return () => {
-      if (animationFrameRef.current) {
+      document.removeEventListener('visibilitychange', resume);
+      if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
     };
   }, [mode]);
@@ -45,7 +55,7 @@ export const VisualizerPanel: React.FC = () => {
     <div className="bg-jungle-900 border border-jungle-700/80 rounded-xl p-3 shadow-xl flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-lime-500 animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-lime-500" />
           <span className="text-xs font-mono font-bold tracking-wider text-cream-100">
             JUNGLE ANALYZER
           </span>
